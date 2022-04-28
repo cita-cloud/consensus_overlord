@@ -25,6 +25,8 @@ pub struct ConsensusConfig {
     pub key_id: u64,
     pub node_address: String,
     pub server_retry_interval: u64,
+    pub wal_path: String,
+    pub private_key_path: String,
 }
 
 impl Default for ConsensusConfig {
@@ -37,6 +39,8 @@ impl Default for ConsensusConfig {
             key_id: 1,
             node_address: "".to_string(),
             server_retry_interval: 3,
+            wal_path: "./consensus_wal".to_string(),
+            private_key_path: "./private_key".to_string(),
         }
     }
 }

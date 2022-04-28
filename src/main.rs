@@ -14,6 +14,7 @@
 
 mod config;
 mod consensus;
+mod error;
 mod health_check;
 mod util;
 
@@ -70,17 +71,16 @@ use cita_cloud_proto::health_check::health_server::HealthServer;
 use cita_cloud_proto::network::network_msg_handler_service_server::NetworkMsgHandlerService;
 use cita_cloud_proto::network::network_msg_handler_service_server::NetworkMsgHandlerServiceServer;
 use cita_cloud_proto::network::{NetworkMsg, RegisterInfo};
-use std::sync::Arc;
 use tonic::{transport::Server, Request, Response, Status};
 
 // grpc server of RPC
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ConsensusServer {
-    consensus: Arc<RwLock<Consensus>>,
+    consensus: Consensus,
 }
 
 impl ConsensusServer {
-    pub fn new(consensus: Arc<RwLock<Consensus>>) -> Self {
+    pub fn new(consensus: Consensus) -> Self {
         ConsensusServer { consensus }
     }
 }
@@ -91,9 +91,9 @@ impl ConsensusService for ConsensusServer {
         &self,
         request: Request<ConsensusConfiguration>,
     ) -> Result<Response<StatusCode>, Status> {
-        let config = request.into_inner();
-        // todo
-        debug!("reconfigure {:?}", config);
+        let configuration = request.into_inner();
+        debug!("reconfigure {:?}", configuration);
+        self.consensus.proc_reconfigure(configuration).await;
         let reply = StatusCode {
             code: status_code::StatusCode::Success.into(),
         };
@@ -107,7 +107,7 @@ impl ConsensusService for ConsensusServer {
         let block_with_proof = request.into_inner();
         // todo
         debug!("check_block {:?}", block_with_proof);
-        let res = true;
+        let res = self.consensus.check_block(block_with_proof).await;
         let code = if res {
             status_code::StatusCode::Success.into()
         } else {
@@ -131,7 +131,7 @@ impl NetworkMsgHandlerService for ConsensusServer {
                 "get network message module {:?} type {:?}",
                 msg.module, msg.r#type
             );
-            // todo
+            self.consensus.proc_network_msg(msg).await;
             let reply = StatusCode {
                 code: status_code::StatusCode::Success.into(),
             };
@@ -144,7 +144,6 @@ use crate::config::ConsensusConfig;
 use crate::consensus::Consensus;
 use crate::health_check::HealthCheckServer;
 use crate::util::{init_grpc_client, kms_client, network_client};
-use parking_lot::RwLock;
 use std::time::Duration;
 
 #[tokio::main]
@@ -204,8 +203,13 @@ async fn run(opts: RunOpts) {
         warn!("kms not ready! Retrying");
     }
 
-    let consensus = Consensus::new();
-    let consensus_server = ConsensusServer::new(Arc::new(RwLock::new(consensus)));
+    let consensus = Consensus::new(config);
+
+    let consensus_server = ConsensusServer::new(consensus.clone());
+
+    tokio::spawn(async move {
+        consensus.run(0).await;
+    });
 
     let addr_str = format!("127.0.0.1:{}", &grpc_port);
     let addr = addr_str.parse().unwrap();
