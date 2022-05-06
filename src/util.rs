@@ -16,6 +16,7 @@ use crate::config::ConsensusConfig;
 use cita_cloud_proto::controller::consensus2_controller_service_client::Consensus2ControllerServiceClient;
 use cita_cloud_proto::kms::kms_service_client::KmsServiceClient;
 use cita_cloud_proto::network::network_service_client::NetworkServiceClient;
+use cloud_util::crypto::{hash_data, recover_signature, sign_message};
 use tokio::sync::OnceCell;
 use tonic::transport::{Channel, Endpoint};
 
