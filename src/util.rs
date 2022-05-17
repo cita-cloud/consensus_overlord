@@ -19,6 +19,9 @@ use cita_cloud_proto::network::network_service_client::NetworkServiceClient;
 use cloud_util::crypto::{hash_data, recover_signature, sign_message};
 use tokio::sync::OnceCell;
 use tonic::transport::{Channel, Endpoint};
+use overlord::types::{Node, Address};
+use bytes::{Bytes, BytesMut};
+use overlord::DurationConfig;
 
 pub static KMS_CLIENT: OnceCell<KmsServiceClient<Channel>> = OnceCell::const_new();
 pub static NETWORK_CLIENT: OnceCell<NetworkServiceClient<Channel>> = OnceCell::const_new();
@@ -60,4 +63,30 @@ pub fn network_client() -> NetworkServiceClient<Channel> {
 
 pub fn controller_client() -> Consensus2ControllerServiceClient<Channel> {
     CONTROLLER_CLIENT.get().cloned().unwrap()
+}
+
+pub fn validators_to_nodes(validators: &Vec<Vec<u8>>) -> Vec<Node> {
+    let mut nodes = Vec::new(); 
+    for v in validators {
+        nodes.push(
+            Node {
+                address:        Bytes::copy_from_slice(&v[..]),
+                propose_weight: 1,
+                vote_weight:    1,
+            }
+        )
+    }
+    nodes
+}
+
+pub const HASH_BYTES_LEN: usize = 32;
+
+pub fn sm3_hash(input: &[u8]) -> [u8; HASH_BYTES_LEN] {
+    let mut result = [0u8; HASH_BYTES_LEN];
+    result.copy_from_slice(libsm::sm3::hash::Sm3Hash::new(input).get_hash().as_ref());
+    result
+}
+
+pub fn timer_config() -> Option<DurationConfig> {
+    Some(DurationConfig::new(10, 10, 10, 3))
 }
