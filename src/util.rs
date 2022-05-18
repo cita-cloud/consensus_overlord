@@ -13,15 +13,14 @@
 // limitations under the License.
 
 use crate::config::ConsensusConfig;
+use bytes::Bytes;
 use cita_cloud_proto::controller::consensus2_controller_service_client::Consensus2ControllerServiceClient;
 use cita_cloud_proto::kms::kms_service_client::KmsServiceClient;
 use cita_cloud_proto::network::network_service_client::NetworkServiceClient;
-use cloud_util::crypto::{hash_data, recover_signature, sign_message};
+use overlord::types::Node;
+use overlord::DurationConfig;
 use tokio::sync::OnceCell;
 use tonic::transport::{Channel, Endpoint};
-use overlord::types::{Node, Address};
-use bytes::{Bytes, BytesMut};
-use overlord::DurationConfig;
 
 pub static KMS_CLIENT: OnceCell<KmsServiceClient<Channel>> = OnceCell::const_new();
 pub static NETWORK_CLIENT: OnceCell<NetworkServiceClient<Channel>> = OnceCell::const_new();
@@ -66,15 +65,13 @@ pub fn controller_client() -> Consensus2ControllerServiceClient<Channel> {
 }
 
 pub fn validators_to_nodes(validators: &Vec<Vec<u8>>) -> Vec<Node> {
-    let mut nodes = Vec::new(); 
+    let mut nodes = Vec::new();
     for v in validators {
-        nodes.push(
-            Node {
-                address:        Bytes::copy_from_slice(&v[..]),
-                propose_weight: 1,
-                vote_weight:    1,
-            }
-        )
+        nodes.push(Node {
+            address: Bytes::copy_from_slice(&v[..]),
+            propose_weight: 1,
+            vote_weight: 1,
+        })
     }
     nodes
 }

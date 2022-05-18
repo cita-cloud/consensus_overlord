@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use derive_more::{Constructor, Display, From};
+use derive_more::Display;
 use ophelia::Error as CryptoError;
 use prost::{DecodeError as ProtoDecodeError, EncodeError as ProtoEncodeError};
 use std::error::Error;
