@@ -16,40 +16,46 @@ use crate::config::ConsensusConfig;
 use crate::error::ConsensusError;
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
-use cita_cloud_proto::common::Proposal;
-use cita_cloud_proto::common::{ConsensusConfiguration, Empty, ProposalWithProof, StatusCode};
+use cita_cloud_proto::common::{ConsensusConfiguration, Empty, ProposalWithProof, StatusCode, Proposal};
 use cita_cloud_proto::network::NetworkMsg;
 use cloud_util::wal::{LogType, Wal as CITAWal};
 use creep::{Cloneable, Context};
-use overlord::types::{Commit, Hash, Node, OverlordMsg, Status, ViewChangeReason};
+use overlord::types::{Commit, Hash, Node, OverlordMsg, Status, ViewChangeReason, SignedVote, SignedProposal, AggregatedVote, SignedChoke};
 use overlord::{
     Codec, Consensus as OverlordConsensus, Crypto as OverlordCrypto, DurationConfig, Overlord,
     OverlordHandler, Wal,
 };
-use prost::Message;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use log::{info, warn};
+use crate::util::{validators_to_nodes, timer_config};
+use rlp::Decodable;
+use rlp::Encodable;
+use rlp::Rlp;
 
 #[derive(Clone)]
 pub struct Consensus {
     // servic config
-    config: ConsensusConfig,
-    wal: ConsensusWal,
-    crypto: ConsensusCrypto,
-    brain: Brain,
-    overlord: Arc<Overlord<ConsensusProposal, Brain, ConsensusCrypto, ConsensusWal>>,
-    overlord_handler: OverlordHandler<ConsensusProposal>,
+    pub config: ConsensusConfig,
+    pub wal: ConsensusWal,
+    pub crypto: ConsensusCrypto,
+    pub brain: Brain,
+    pub overlord: Arc<Overlord<ConsensusProposal, Brain, ConsensusCrypto, ConsensusWal>>,
+    pub overlord_handler: OverlordHandler<ConsensusProposal>,
+
+    // internal field
+    pub reconfigure: Arc<RwLock<Option<ConsensusConfiguration>>>,
 }
 
 impl Consensus {
     pub fn new(config: ConsensusConfig) -> Self {
         let wal = ConsensusWal::new(&config.wal_path);
         let crypto = ConsensusCrypto::new(&config.private_key_path);
-        let brain = Brain::new();
+        let brain = Brain::new(crypto.clone());
 
         let overlord = Overlord::new(
             crypto.name.clone(),
@@ -67,27 +73,53 @@ impl Consensus {
             brain,
             overlord: Arc::new(overlord),
             overlord_handler,
+            reconfigure: Arc::new(RwLock::new(None)),
         }
     }
 
-    pub async fn run(&self, init_block_number: u64) {
-        self.overlord_handler
+    pub async fn run(&self, init_block_number: u64, interval: u64, authority_list: Vec<Node>) {
+        self.overlord.run(init_block_number, interval, authority_list, timer_config()).await.unwrap();
+    }
+
+    async fn update_status(&self) {
+        if let Some(ref reconfiguration) = *self.reconfigure.read().await {
+            let init_block_number = reconfiguration.height;
+            let interval = reconfiguration.block_interval;
+            let nodes = validators_to_nodes(&reconfiguration.validators);
+
+            self.brain.set_nodes(nodes.clone());
+
+            self.overlord_handler
             .send_msg(
                 Context::new(),
                 OverlordMsg::RichStatus(Status {
                     height: init_block_number,
-                    interval: Some(3),
-                    timer_config: None,
-                    authority_list: Vec::new(),
+                    interval: Some(interval as u64),
+                    timer_config: timer_config(),
+                    authority_list: nodes,
                 }),
             )
             .unwrap();
 
-        self.overlord.run(0, 3, Vec::new(), None).await.unwrap();
+            let mut new_addr_pubkey = HashMap::new();
+            for v in &reconfiguration.validators {
+                let _ = new_addr_pubkey.insert(Bytes::copy_from_slice(&v[..]), BlsPublicKey::try_from(v.as_ref()).unwrap());
+            }
+            self.crypto.update_addr_pubkey(new_addr_pubkey);
+        }
     }
 
     pub async fn proc_reconfigure(&self, configuration: ConsensusConfiguration) {
-        // todo
+        let configuration_height = configuration.height;
+        if let Some(ref old_configuration) = *self.reconfigure.read().await {
+            if configuration_height > old_configuration.height {
+                *self.reconfigure.write().await = Some(configuration);
+                self.update_status().await;
+            }
+        } else {
+            *self.reconfigure.write().await = Some(configuration);
+            self.update_status().await;
+        }
     }
 
     pub async fn check_block(&self, block_with_proof: ProposalWithProof) -> bool {
@@ -96,32 +128,47 @@ impl Consensus {
     }
 
     pub async fn proc_network_msg(&self, msg: NetworkMsg) {
-        // todo
-        /*
-        match msg {
-            OverlordMsg::SignedVote(vote) => {
-                self.overlord_handler
+        match msg.r#type.as_str() {
+            "SignedVote" => {
+                if let Ok(vote) = SignedVote::decode(&Rlp::new(&msg.msg)) {
+                    self.overlord_handler
                     .send_msg(Context::new(), OverlordMsg::SignedVote(vote))
                     .unwrap();
-            }
-            OverlordMsg::SignedProposal(proposal) => {
-                self.overlord_handler
+                } else {
+                    warn!("decode SignedVote failed!");
+                }
+            },
+            "SignedProposal" => {
+                if let Ok(proposal) = SignedProposal::decode(&Rlp::new(&msg.msg)) {
+                    self.overlord_handler
                     .send_msg(Context::new(), OverlordMsg::SignedProposal(proposal))
                     .unwrap();
-            }
-            OverlordMsg::AggregatedVote(agg_vote) => {
-                self.overlord_handler
+                } else {
+                    warn!("decode SignedProposal failed!");
+                }
+            },
+            "AggregatedVote" => {
+                if let Ok(agg_vote) = AggregatedVote::decode(&Rlp::new(&msg.msg)) {
+                    self.overlord_handler
                     .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote))
                     .unwrap();
-            }
-            OverlordMsg::SignedChoke(choke) => {
-                self.overlord_handler
+                } else {
+                    warn!("decode AggregatedVote failed!");
+                }
+            },
+            "SignedChoke" => {
+                if let Ok(choke) = SignedChoke::decode(&Rlp::new(&msg.msg)) {
+                    self.overlord_handler
                     .send_msg(Context::new(), OverlordMsg::SignedChoke(choke))
                     .unwrap();
+                } else {
+                    warn!("decode SignedChoke failed!");
+                }
+            },
+            _ => {
+                warn!("unexpected network msg!");
             }
-            _ => {}
         }
-        */
     }
 }
 
@@ -157,11 +204,11 @@ impl Wal for ConsensusWal {
 
     async fn load(&self) -> Result<Option<Bytes>, Box<dyn Error + Send>> {
         let (_, info) = self.wal.read().await.load()[0].clone();
-        Ok(Some(Bytes::copy_from_slice(&info[..])))
+        Ok(Some(Bytes::from(info)))
     }
 }
 
-use blake2b_simd::blake2b;
+use crate::util::{controller_client, sm3_hash, network_client};
 use ophelia::HashValue;
 use ophelia::{
     BlsSignatureVerify, Crypto, Error as CryptoError, PrivateKey, PublicKey, Signature,
@@ -177,10 +224,10 @@ use parking_lot::RwLock as PRwLock;
 
 #[derive(Clone)]
 pub struct ConsensusCrypto {
-    private_key: BlsPrivateKey,
-    addr_pubkey: Arc<PRwLock<HashMap<Bytes, BlsPublicKey>>>,
-    common_ref: String,
-    name: Bytes,
+    pub private_key: BlsPrivateKey,
+    pub addr_pubkey: Arc<PRwLock<HashMap<Bytes, BlsPublicKey>>>,
+    pub common_ref: String,
+    pub name: Bytes,
 }
 
 impl ConsensusCrypto {
@@ -225,7 +272,7 @@ impl ConsensusCrypto {
 
 impl OverlordCrypto for ConsensusCrypto {
     fn hash(&self, msg: Bytes) -> Bytes {
-        Bytes::copy_from_slice(blake2b(msg.as_ref()).as_bytes())
+        Bytes::from(sm3_hash(msg.as_ref()).to_vec())
     }
 
     fn sign(&self, hash: Bytes) -> Result<Bytes, Box<dyn Error + Send>> {
@@ -309,13 +356,12 @@ impl OverlordCrypto for ConsensusCrypto {
 
 #[derive(Clone, Debug)]
 pub struct ConsensusProposal {
-    proposal: Proposal,
+    data: Bytes,
 }
 
-// todo maybe not corecct
 impl PartialEq for ConsensusProposal {
     fn eq(&self, other: &Self) -> bool {
-        self.proposal.height == other.proposal.height
+        self.data == other.data
     }
 }
 
@@ -323,31 +369,35 @@ impl Eq for ConsensusProposal {}
 
 impl Codec for ConsensusProposal {
     fn encode(&self) -> Result<Bytes, Box<dyn Error + Send>> {
-        let mut buf = Vec::new();
-        let ret = self.proposal.encode(&mut buf);
-        match ret {
-            Ok(()) => Ok(Bytes::copy_from_slice(&buf[..])),
-            Err(e) => Err(Box::new(ConsensusError::EncodeError(e))),
-        }
+        Ok(self.data.clone())
     }
 
     fn decode(data: Bytes) -> Result<Self, Box<dyn Error + Send>> {
-        let ret = Proposal::decode(data.as_ref());
-        match ret {
-            Ok(proposal) => Ok(ConsensusProposal { proposal }),
-            Err(e) => Err(Box::new(ConsensusError::DecodeError(e))),
-        }
+        Ok(ConsensusProposal { data })
     }
 }
 
 use overlord::error::ConsensusError as OverlordError;
 
 #[derive(Clone)]
-pub struct Brain {}
+pub struct Brain {
+    crypto: ConsensusCrypto,
+    nodes: Arc<RwLock<Vec<Node>>>
+}
 
 impl Brain {
-    pub fn new() -> Self {
-        Brain {}
+    pub fn new(crypto: ConsensusCrypto) -> Self {
+        Brain {crypto, nodes: Arc::new(RwLock::new(Vec::new()))}
+    }
+
+    pub async fn set_nodes(&self, new_nodes: Vec<Node>) {
+        let mut nodes = self.nodes.write().await;
+
+        *nodes = new_nodes;
+    }
+
+    pub async fn get_nodes(&self) -> Vec<Node> {
+        self.nodes.read().await.clone()
     }
 }
 
@@ -356,21 +406,69 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
     async fn get_block(
         &self,
         _ctx: Context,
-        _height: u64,
+        height: u64,
     ) -> Result<(ConsensusProposal, Hash), Box<dyn Error + Send>> {
-        Err(Box::new(ConsensusError::Other(
-            "get block failed".to_string(),
-        )))
+            match controller_client().get_proposal(Empty {}).await {
+            Ok(res) => {
+                let response = res.into_inner();
+                let status_code = response.status.unwrap();
+                let proposal = response.proposal.unwrap();
+
+                if status_code.code == u32::from(status_code::StatusCode::NoneProposal) {
+                    warn!("get_block error: NoneProposal");
+                    Err(Box::new(ConsensusError::Other(
+                        "get block failed".to_string(),
+                    )))
+                } else {
+                    let proposal_height = proposal.height;
+                    let proposal_data = proposal.data;
+
+                    if proposal_height != height {
+                        warn!("get_block error height: {} {}", height, proposal_height);
+                        Err(Box::new(ConsensusError::Other(
+                            "get block failed".to_string(),
+                        )))
+                    } else {
+                        Ok((ConsensusProposal {data: Bytes::from(proposal_data.clone())}, Bytes::from(sm3_hash(&proposal_data).to_vec())))
+                    }
+                }
+            }
+            Err(status) => {
+                warn!("get_block error: {}", status.to_string());
+                Err(Box::new(ConsensusError::Other(
+                    "get block failed".to_string(),
+                )))
+            }
+        }
     }
 
     async fn check_block(
         &self,
         _ctx: Context,
-        _height: u64,
+        height: u64,
         _hash: Hash,
-        _speech: ConsensusProposal,
+        speech: ConsensusProposal,
     ) -> Result<(), Box<dyn Error + Send>> {
-        Ok(())
+        match controller_client().check_proposal(Proposal { height,  data: speech.data.to_vec() }).await {
+            Ok(res) => {
+                let scode = res.into_inner();
+                
+                if status_code::StatusCode::from(scode.code) == status_code::StatusCode::Success {
+                    Ok(())
+                } else {
+                    warn!("check_proposal failed {}", scode.code);
+                    Err(Box::new(ConsensusError::Other(
+                        "check proposal failed".to_string(),
+                    )))
+                }
+            }
+            Err(status) => {
+                warn!("check_proposal error: {}", status.to_string());
+                Err(Box::new(ConsensusError::Other(
+                    "check proposal failed".to_string(),
+                )))
+            }
+        }
     }
 
     async fn commit(
@@ -379,12 +477,62 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         height: u64,
         commit: Commit<ConsensusProposal>,
     ) -> Result<Status, Box<dyn Error + Send>> {
-        Ok(Status {
-            height: height + 1,
-            interval: Some(3),
-            timer_config: None,
-            authority_list: Vec::new(),
-        })
+        let proposal = commit.content.data;
+        let proof = commit.proof.rlp_bytes();
+
+        let pproof = ProposalWithProof {
+            proposal: Some(Proposal {
+                height,
+                data: proposal.to_vec(),
+            }),
+            proof: proof.to_vec(),
+        };
+
+        match controller_client().commit_block(pproof).await {
+            Ok(res) => {
+                let config = res.into_inner();
+                if let Some((status, config)) = config.status.zip(config.config) {
+                    if status_code::StatusCode::from(status.code)
+                        == status_code::StatusCode::Success
+                    {
+                        let new_block_number = config.height;
+                        let interval = config.block_interval;
+                        let nodes = validators_to_nodes(&config.validators);
+
+                        self.set_nodes(nodes.clone());
+
+                        let mut new_addr_pubkey = HashMap::new();
+                        for v in config.validators {
+                            new_addr_pubkey.insert(Bytes::copy_from_slice(&v[..]), BlsPublicKey::try_from(v.as_ref()).unwrap());
+                        }
+                        self.crypto.update_addr_pubkey(new_addr_pubkey);
+                            
+                        Ok(Status {
+                                height: new_block_number,
+                                interval: Some(interval as u64),
+                                timer_config: timer_config(),
+                                authority_list: nodes,
+                            })
+                    } else {
+                        warn!("commit_block error: {}", status.code);
+                        Err(Box::new(ConsensusError::Other(
+                            "commit block failed".to_string(),
+                        )))
+                    }
+                } else {
+                    warn!("commit_block error");
+                    Err(Box::new(ConsensusError::Other(
+                        "commit block failed".to_string(),
+                    )))
+                }
+            }
+            Err(status) => {
+                warn!("commit_block error: {}", status.to_string());
+                Err(Box::new(ConsensusError::Other(
+                    "commit block failed".to_string(),
+                )))
+            }
+        }
     }
 
     async fn get_authority_list(
@@ -392,7 +540,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         _ctx: Context,
         _height: u64,
     ) -> Result<Vec<Node>, Box<dyn Error + Send>> {
-        Ok(Vec::new())
+        Ok(self.get_nodes().await)
     }
 
     async fn broadcast_to_other(
@@ -400,6 +548,55 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         _ctx: Context,
         words: OverlordMsg<ConsensusProposal>,
     ) -> Result<(), Box<dyn Error + Send>> {
+        let network_msg = match words {
+            OverlordMsg::SignedVote(vote) => {
+                NetworkMsg {
+                    module: "consensus".to_owned(),
+                    r#type: "SignedVote".to_string(),
+                    origin: 0,
+                    msg: vote.rlp_bytes().to_vec(),
+                }
+            },
+            OverlordMsg::SignedProposal(proposal) => {
+                NetworkMsg {
+                    module: "consensus".to_owned(),
+                    r#type: "SignedProposal".to_string(),
+                    origin: 0,
+                    msg: proposal.rlp_bytes().to_vec(),
+                }
+            },
+            OverlordMsg::AggregatedVote(agg_vote) => {
+                NetworkMsg {
+                    module: "consensus".to_owned(),
+                    r#type: "AggregatedVote".to_string(),
+                    origin: 0,
+                    msg: agg_vote.rlp_bytes().to_vec(),
+                }
+            },
+            OverlordMsg::SignedChoke(choke) => {
+                NetworkMsg {
+                    module: "consensus".to_owned(),
+                    r#type: "SignedChoke".to_string(),
+                    origin: 0,
+                    msg: choke.rlp_bytes().to_vec(),
+                }
+            },
+            _ => {
+                warn!("unexpected network msg!");
+                return Err(Box::new(ConsensusError::Other(
+                    "unexpected network msg".to_string(),
+                )));
+            }
+        };
+
+        let resp = network_client().broadcast(network_msg).await;
+        if let Err(e) = resp {
+            warn!("net client broadcast error {:?}", e);
+
+            return Err(Box::new(ConsensusError::Other(
+                    " broadcast network msg error".to_string(),
+                )));
+        }
         Ok(())
     }
 
@@ -409,17 +606,69 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         name: Bytes,
         words: OverlordMsg<ConsensusProposal>,
     ) -> Result<(), Box<dyn Error + Send>> {
+        let network_msg = match words {
+            OverlordMsg::SignedVote(vote) => {
+                NetworkMsg {
+                    module: "consensus".to_owned(),
+                    r#type: "SignedVote".to_string(),
+                    origin: 0,
+                    msg: vote.rlp_bytes().to_vec(),
+                }
+            },
+            OverlordMsg::SignedProposal(proposal) => {
+                NetworkMsg {
+                    module: "consensus".to_owned(),
+                    r#type: "SignedProposal".to_string(),
+                    origin: 0,
+                    msg: proposal.rlp_bytes().to_vec(),
+                }
+            },
+            OverlordMsg::AggregatedVote(agg_vote) => {
+                NetworkMsg {
+                    module: "consensus".to_owned(),
+                    r#type: "AggregatedVote".to_string(),
+                    origin: 0,
+                    msg: agg_vote.rlp_bytes().to_vec(),
+                }
+            },
+            OverlordMsg::SignedChoke(choke) => {
+                NetworkMsg {
+                    module: "consensus".to_owned(),
+                    r#type: "SignedChoke".to_string(),
+                    origin: 0,
+                    msg: choke.rlp_bytes().to_vec(),
+                }
+            },
+            _ => {
+                warn!("unexpected network msg!");
+                return Err(Box::new(ConsensusError::Other(
+                    "unexpected network msg".to_string(),
+                )));
+            }
+        };
+
+        let resp = network_client().broadcast(network_msg).await;
+        if let Err(e) = resp {
+            warn!("net client broadcast error {:?}", e);
+
+            return Err(Box::new(ConsensusError::Other(
+                    " broadcast network msg error".to_string(),
+                )));
+        }
         Ok(())
     }
 
-    fn report_error(&self, _ctx: Context, _err: OverlordError) {}
+    fn report_error(&self, _ctx: Context, err: OverlordError) {
+        warn!("report_error {}", err);
+    }
 
     fn report_view_change(
         &self,
         _ctx: Context,
-        _height: u64,
-        _round: u64,
-        _reason: ViewChangeReason,
+        height: u64,
+        round: u64,
+        reason: ViewChangeReason,
     ) {
+        info!("view change {} {}: {}", height, round, reason);
     }
 }

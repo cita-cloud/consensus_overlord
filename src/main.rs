@@ -145,6 +145,7 @@ use crate::consensus::Consensus;
 use crate::health_check::HealthCheckServer;
 use crate::util::{init_grpc_client, kms_client, network_client};
 use std::time::Duration;
+use crate::util::validators_to_nodes;
 
 #[tokio::main]
 async fn run(opts: RunOpts) {
@@ -203,12 +204,25 @@ async fn run(opts: RunOpts) {
         warn!("kms not ready! Retrying");
     }
 
-    let consensus = Consensus::new(config);
+    let consensus = Consensus::new(config.clone());
 
     let consensus_server = ConsensusServer::new(consensus.clone());
 
     tokio::spawn(async move {
-        consensus.run(0).await;
+        let mut interval = tokio::time::interval(Duration::from_secs(config.server_retry_interval));
+        loop {
+            interval.tick().await;
+            // waiting init reconfiguration msg
+            {
+                if let Some(ref reconfiguration) = *consensus.reconfigure.read().await {
+                    let init_block_number = reconfiguration.height;
+                    let interval = reconfiguration.block_interval;
+                    
+                    consensus.run(init_block_number, interval as u64, validators_to_nodes(&reconfiguration.validators)).await;
+                }
+            }       
+            info!("wating for reconfiguration!");
+        }
     });
 
     let addr_str = format!("127.0.0.1:{}", &grpc_port);

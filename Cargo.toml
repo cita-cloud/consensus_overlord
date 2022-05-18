@@ -27,11 +27,14 @@ status_code = { package = "cloud-code", git = "https://github.com/cita-cloud/sta
 ophelia = "0.3"
 ophelia-blst = "0.3"
 ophelia-secp256k1 = "0.3"
-blake2b_simd = "1.0"
 hex = "0.4"
 derive_more = "0.99"
 creep = "0.2"
 parking_lot = "0.12"
+
+libsm = "0.4"
+
+rlp = "0.5"
 
 [profile.release.package."*"]
 # Set the default for dependencies.
