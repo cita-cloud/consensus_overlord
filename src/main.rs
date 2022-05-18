@@ -143,9 +143,9 @@ impl NetworkMsgHandlerService for ConsensusServer {
 use crate::config::ConsensusConfig;
 use crate::consensus::Consensus;
 use crate::health_check::HealthCheckServer;
+use crate::util::validators_to_nodes;
 use crate::util::{init_grpc_client, kms_client, network_client};
 use std::time::Duration;
-use crate::util::validators_to_nodes;
 
 #[tokio::main]
 async fn run(opts: RunOpts) {
@@ -217,10 +217,16 @@ async fn run(opts: RunOpts) {
                 if let Some(ref reconfiguration) = *consensus.reconfigure.read().await {
                     let init_block_number = reconfiguration.height;
                     let interval = reconfiguration.block_interval;
-                    
-                    consensus.run(init_block_number, interval as u64, validators_to_nodes(&reconfiguration.validators)).await;
+
+                    consensus
+                        .run(
+                            init_block_number,
+                            interval as u64,
+                            validators_to_nodes(&reconfiguration.validators),
+                        )
+                        .await;
                 }
-            }       
+            }
             info!("wating for reconfiguration!");
         }
     });

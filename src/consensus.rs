@@ -14,28 +14,30 @@
 
 use crate::config::ConsensusConfig;
 use crate::error::ConsensusError;
+use crate::util::{timer_config, validators_to_nodes};
 use async_trait::async_trait;
-use bytes::{Bytes, BytesMut};
-use cita_cloud_proto::common::{ConsensusConfiguration, Empty, ProposalWithProof, StatusCode, Proposal};
+use bytes::Bytes;
+use cita_cloud_proto::common::{ConsensusConfiguration, Empty, Proposal, ProposalWithProof};
 use cita_cloud_proto::network::NetworkMsg;
 use cloud_util::wal::{LogType, Wal as CITAWal};
-use creep::{Cloneable, Context};
-use overlord::types::{Commit, Hash, Node, OverlordMsg, Status, ViewChangeReason, SignedVote, SignedProposal, AggregatedVote, SignedChoke};
-use overlord::{
-    Codec, Consensus as OverlordConsensus, Crypto as OverlordCrypto, DurationConfig, Overlord,
-    OverlordHandler, Wal,
+use creep::Context;
+use log::{info, warn};
+use overlord::types::{
+    AggregatedVote, Commit, Hash, Node, OverlordMsg, SignedChoke, SignedProposal, SignedVote,
+    Status, ViewChangeReason,
 };
+use overlord::{
+    Codec, Consensus as OverlordConsensus, Crypto as OverlordCrypto, Overlord, OverlordHandler, Wal,
+};
+use rlp::Decodable;
+use rlp::Encodable;
+use rlp::Rlp;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use log::{info, warn};
-use crate::util::{validators_to_nodes, timer_config};
-use rlp::Decodable;
-use rlp::Encodable;
-use rlp::Rlp;
 
 #[derive(Clone)]
 pub struct Consensus {
@@ -78,7 +80,10 @@ impl Consensus {
     }
 
     pub async fn run(&self, init_block_number: u64, interval: u64, authority_list: Vec<Node>) {
-        self.overlord.run(init_block_number, interval, authority_list, timer_config()).await.unwrap();
+        self.overlord
+            .run(init_block_number, interval, authority_list, timer_config())
+            .await
+            .unwrap();
     }
 
     async fn update_status(&self) {
@@ -87,23 +92,27 @@ impl Consensus {
             let interval = reconfiguration.block_interval;
             let nodes = validators_to_nodes(&reconfiguration.validators);
 
-            self.brain.set_nodes(nodes.clone());
+            self.brain.set_nodes(nodes.clone()).await;
 
             self.overlord_handler
-            .send_msg(
-                Context::new(),
-                OverlordMsg::RichStatus(Status {
-                    height: init_block_number,
-                    interval: Some(interval as u64),
-                    timer_config: timer_config(),
-                    authority_list: nodes,
-                }),
-            )
-            .unwrap();
+                .send_msg(
+                    Context::new(),
+                    OverlordMsg::RichStatus(Status {
+                        height: init_block_number,
+                        interval: Some(interval as u64),
+                        timer_config: timer_config(),
+                        authority_list: nodes,
+                    }),
+                )
+                .unwrap();
 
+            #[allow(clippy::mutable_key_type)]
             let mut new_addr_pubkey = HashMap::new();
             for v in &reconfiguration.validators {
-                let _ = new_addr_pubkey.insert(Bytes::copy_from_slice(&v[..]), BlsPublicKey::try_from(v.as_ref()).unwrap());
+                let _ = new_addr_pubkey.insert(
+                    Bytes::copy_from_slice(&v[..]),
+                    BlsPublicKey::try_from(v.as_ref()).unwrap(),
+                );
             }
             self.crypto.update_addr_pubkey(new_addr_pubkey);
         }
@@ -122,7 +131,7 @@ impl Consensus {
         }
     }
 
-    pub async fn check_block(&self, block_with_proof: ProposalWithProof) -> bool {
+    pub async fn check_block(&self, _block_with_proof: ProposalWithProof) -> bool {
         // todo
         true
     }
@@ -132,39 +141,39 @@ impl Consensus {
             "SignedVote" => {
                 if let Ok(vote) = SignedVote::decode(&Rlp::new(&msg.msg)) {
                     self.overlord_handler
-                    .send_msg(Context::new(), OverlordMsg::SignedVote(vote))
-                    .unwrap();
+                        .send_msg(Context::new(), OverlordMsg::SignedVote(vote))
+                        .unwrap();
                 } else {
                     warn!("decode SignedVote failed!");
                 }
-            },
+            }
             "SignedProposal" => {
                 if let Ok(proposal) = SignedProposal::decode(&Rlp::new(&msg.msg)) {
                     self.overlord_handler
-                    .send_msg(Context::new(), OverlordMsg::SignedProposal(proposal))
-                    .unwrap();
+                        .send_msg(Context::new(), OverlordMsg::SignedProposal(proposal))
+                        .unwrap();
                 } else {
                     warn!("decode SignedProposal failed!");
                 }
-            },
+            }
             "AggregatedVote" => {
                 if let Ok(agg_vote) = AggregatedVote::decode(&Rlp::new(&msg.msg)) {
                     self.overlord_handler
-                    .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote))
-                    .unwrap();
+                        .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote))
+                        .unwrap();
                 } else {
                     warn!("decode AggregatedVote failed!");
                 }
-            },
+            }
             "SignedChoke" => {
                 if let Ok(choke) = SignedChoke::decode(&Rlp::new(&msg.msg)) {
                     self.overlord_handler
-                    .send_msg(Context::new(), OverlordMsg::SignedChoke(choke))
-                    .unwrap();
+                        .send_msg(Context::new(), OverlordMsg::SignedChoke(choke))
+                        .unwrap();
                 } else {
                     warn!("decode SignedChoke failed!");
                 }
-            },
+            }
             _ => {
                 warn!("unexpected network msg!");
             }
@@ -197,7 +206,7 @@ impl Wal for ConsensusWal {
             .write()
             .await
             .save(next_wal_count, LogType::Skip, info.as_ref())
-            .map_err(|e| ConsensusError::WALErr(e))?;
+            .map_err(ConsensusError::WALErr)?;
         self.wal_count.store(next_wal_count, Ordering::SeqCst);
         Ok(())
     }
@@ -208,18 +217,10 @@ impl Wal for ConsensusWal {
     }
 }
 
-use crate::util::{controller_client, sm3_hash, network_client};
+use crate::util::{controller_client, network_client, sm3_hash};
 use ophelia::HashValue;
-use ophelia::{
-    BlsSignatureVerify, Crypto, Error as CryptoError, PrivateKey, PublicKey, Signature,
-    ToBlsPublicKey, ToPublicKey, UncompressedPublicKey,
-};
+use ophelia::{BlsSignatureVerify, PrivateKey, PublicKey, Signature, ToBlsPublicKey};
 use ophelia_blst::{BlsPrivateKey, BlsPublicKey, BlsSignature};
-use ophelia_secp256k1::{
-    recover as secp256k1_recover, Secp256k1, Secp256k1PrivateKey, Secp256k1PublicKey,
-    Secp256k1Recoverable, Secp256k1RecoverablePrivateKey, Secp256k1RecoverablePublicKey,
-    Secp256k1RecoverableSignature, Secp256k1Signature,
-};
 use parking_lot::RwLock as PRwLock;
 
 #[derive(Clone)]
@@ -244,6 +245,7 @@ impl ConsensusCrypto {
         }
     }
 
+    #[allow(clippy::mutable_key_type)]
     pub fn update_addr_pubkey(&self, new_addr_pubkey: HashMap<Bytes, BlsPublicKey>) {
         let mut map = self.addr_pubkey.write();
 
@@ -382,12 +384,15 @@ use overlord::error::ConsensusError as OverlordError;
 #[derive(Clone)]
 pub struct Brain {
     crypto: ConsensusCrypto,
-    nodes: Arc<RwLock<Vec<Node>>>
+    nodes: Arc<RwLock<Vec<Node>>>,
 }
 
 impl Brain {
     pub fn new(crypto: ConsensusCrypto) -> Self {
-        Brain {crypto, nodes: Arc::new(RwLock::new(Vec::new()))}
+        Brain {
+            crypto,
+            nodes: Arc::new(RwLock::new(Vec::new())),
+        }
     }
 
     pub async fn set_nodes(&self, new_nodes: Vec<Node>) {
@@ -408,7 +413,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         _ctx: Context,
         height: u64,
     ) -> Result<(ConsensusProposal, Hash), Box<dyn Error + Send>> {
-            match controller_client().get_proposal(Empty {}).await {
+        match controller_client().get_proposal(Empty {}).await {
             Ok(res) => {
                 let response = res.into_inner();
                 let status_code = response.status.unwrap();
@@ -429,7 +434,12 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
                             "get block failed".to_string(),
                         )))
                     } else {
-                        Ok((ConsensusProposal {data: Bytes::from(proposal_data.clone())}, Bytes::from(sm3_hash(&proposal_data).to_vec())))
+                        Ok((
+                            ConsensusProposal {
+                                data: Bytes::from(proposal_data.clone()),
+                            },
+                            Bytes::from(sm3_hash(&proposal_data).to_vec()),
+                        ))
                     }
                 }
             }
@@ -449,10 +459,16 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         _hash: Hash,
         speech: ConsensusProposal,
     ) -> Result<(), Box<dyn Error + Send>> {
-        match controller_client().check_proposal(Proposal { height,  data: speech.data.to_vec() }).await {
+        match controller_client()
+            .check_proposal(Proposal {
+                height,
+                data: speech.data.to_vec(),
+            })
+            .await
+        {
             Ok(res) => {
                 let scode = res.into_inner();
-                
+
                 if status_code::StatusCode::from(scode.code) == status_code::StatusCode::Success {
                     Ok(())
                 } else {
@@ -499,20 +515,24 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
                         let interval = config.block_interval;
                         let nodes = validators_to_nodes(&config.validators);
 
-                        self.set_nodes(nodes.clone());
+                        self.set_nodes(nodes.clone()).await;
 
+                        #[allow(clippy::mutable_key_type)]
                         let mut new_addr_pubkey = HashMap::new();
                         for v in config.validators {
-                            new_addr_pubkey.insert(Bytes::copy_from_slice(&v[..]), BlsPublicKey::try_from(v.as_ref()).unwrap());
+                            new_addr_pubkey.insert(
+                                Bytes::copy_from_slice(&v[..]),
+                                BlsPublicKey::try_from(v.as_ref()).unwrap(),
+                            );
                         }
                         self.crypto.update_addr_pubkey(new_addr_pubkey);
-                            
+
                         Ok(Status {
-                                height: new_block_number,
-                                interval: Some(interval as u64),
-                                timer_config: timer_config(),
-                                authority_list: nodes,
-                            })
+                            height: new_block_number,
+                            interval: Some(interval as u64),
+                            timer_config: timer_config(),
+                            authority_list: nodes,
+                        })
                     } else {
                         warn!("commit_block error: {}", status.code);
                         Err(Box::new(ConsensusError::Other(
@@ -549,37 +569,29 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         words: OverlordMsg<ConsensusProposal>,
     ) -> Result<(), Box<dyn Error + Send>> {
         let network_msg = match words {
-            OverlordMsg::SignedVote(vote) => {
-                NetworkMsg {
-                    module: "consensus".to_owned(),
-                    r#type: "SignedVote".to_string(),
-                    origin: 0,
-                    msg: vote.rlp_bytes().to_vec(),
-                }
+            OverlordMsg::SignedVote(vote) => NetworkMsg {
+                module: "consensus".to_owned(),
+                r#type: "SignedVote".to_string(),
+                origin: 0,
+                msg: vote.rlp_bytes().to_vec(),
             },
-            OverlordMsg::SignedProposal(proposal) => {
-                NetworkMsg {
-                    module: "consensus".to_owned(),
-                    r#type: "SignedProposal".to_string(),
-                    origin: 0,
-                    msg: proposal.rlp_bytes().to_vec(),
-                }
+            OverlordMsg::SignedProposal(proposal) => NetworkMsg {
+                module: "consensus".to_owned(),
+                r#type: "SignedProposal".to_string(),
+                origin: 0,
+                msg: proposal.rlp_bytes().to_vec(),
             },
-            OverlordMsg::AggregatedVote(agg_vote) => {
-                NetworkMsg {
-                    module: "consensus".to_owned(),
-                    r#type: "AggregatedVote".to_string(),
-                    origin: 0,
-                    msg: agg_vote.rlp_bytes().to_vec(),
-                }
+            OverlordMsg::AggregatedVote(agg_vote) => NetworkMsg {
+                module: "consensus".to_owned(),
+                r#type: "AggregatedVote".to_string(),
+                origin: 0,
+                msg: agg_vote.rlp_bytes().to_vec(),
             },
-            OverlordMsg::SignedChoke(choke) => {
-                NetworkMsg {
-                    module: "consensus".to_owned(),
-                    r#type: "SignedChoke".to_string(),
-                    origin: 0,
-                    msg: choke.rlp_bytes().to_vec(),
-                }
+            OverlordMsg::SignedChoke(choke) => NetworkMsg {
+                module: "consensus".to_owned(),
+                r#type: "SignedChoke".to_string(),
+                origin: 0,
+                msg: choke.rlp_bytes().to_vec(),
             },
             _ => {
                 warn!("unexpected network msg!");
@@ -594,8 +606,8 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
             warn!("net client broadcast error {:?}", e);
 
             return Err(Box::new(ConsensusError::Other(
-                    " broadcast network msg error".to_string(),
-                )));
+                " broadcast network msg error".to_string(),
+            )));
         }
         Ok(())
     }
@@ -603,41 +615,33 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
     async fn transmit_to_relayer(
         &self,
         _ctx: Context,
-        name: Bytes,
+        _name: Bytes,
         words: OverlordMsg<ConsensusProposal>,
     ) -> Result<(), Box<dyn Error + Send>> {
         let network_msg = match words {
-            OverlordMsg::SignedVote(vote) => {
-                NetworkMsg {
-                    module: "consensus".to_owned(),
-                    r#type: "SignedVote".to_string(),
-                    origin: 0,
-                    msg: vote.rlp_bytes().to_vec(),
-                }
+            OverlordMsg::SignedVote(vote) => NetworkMsg {
+                module: "consensus".to_owned(),
+                r#type: "SignedVote".to_string(),
+                origin: 0,
+                msg: vote.rlp_bytes().to_vec(),
             },
-            OverlordMsg::SignedProposal(proposal) => {
-                NetworkMsg {
-                    module: "consensus".to_owned(),
-                    r#type: "SignedProposal".to_string(),
-                    origin: 0,
-                    msg: proposal.rlp_bytes().to_vec(),
-                }
+            OverlordMsg::SignedProposal(proposal) => NetworkMsg {
+                module: "consensus".to_owned(),
+                r#type: "SignedProposal".to_string(),
+                origin: 0,
+                msg: proposal.rlp_bytes().to_vec(),
             },
-            OverlordMsg::AggregatedVote(agg_vote) => {
-                NetworkMsg {
-                    module: "consensus".to_owned(),
-                    r#type: "AggregatedVote".to_string(),
-                    origin: 0,
-                    msg: agg_vote.rlp_bytes().to_vec(),
-                }
+            OverlordMsg::AggregatedVote(agg_vote) => NetworkMsg {
+                module: "consensus".to_owned(),
+                r#type: "AggregatedVote".to_string(),
+                origin: 0,
+                msg: agg_vote.rlp_bytes().to_vec(),
             },
-            OverlordMsg::SignedChoke(choke) => {
-                NetworkMsg {
-                    module: "consensus".to_owned(),
-                    r#type: "SignedChoke".to_string(),
-                    origin: 0,
-                    msg: choke.rlp_bytes().to_vec(),
-                }
+            OverlordMsg::SignedChoke(choke) => NetworkMsg {
+                module: "consensus".to_owned(),
+                r#type: "SignedChoke".to_string(),
+                origin: 0,
+                msg: choke.rlp_bytes().to_vec(),
             },
             _ => {
                 warn!("unexpected network msg!");
@@ -652,8 +656,8 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
             warn!("net client broadcast error {:?}", e);
 
             return Err(Box::new(ConsensusError::Other(
-                    " broadcast network msg error".to_string(),
-                )));
+                " broadcast network msg error".to_string(),
+            )));
         }
         Ok(())
     }
@@ -662,13 +666,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         warn!("report_error {}", err);
     }
 
-    fn report_view_change(
-        &self,
-        _ctx: Context,
-        height: u64,
-        round: u64,
-        reason: ViewChangeReason,
-    ) {
+    fn report_view_change(&self, _ctx: Context, height: u64, round: u64, reason: ViewChangeReason) {
         info!("view change {} {}: {}", height, round, reason);
     }
 }
