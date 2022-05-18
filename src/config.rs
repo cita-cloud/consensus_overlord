@@ -40,7 +40,7 @@ impl Default for ConsensusConfig {
             node_address: "".to_string(),
             server_retry_interval: 3,
             wal_path: "./consensus_wal".to_string(),
-            private_key_path: "./kms.db".to_string(),
+            private_key_path: "./private_key".to_string(),
         }
     }
 }
