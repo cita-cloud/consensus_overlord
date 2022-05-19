@@ -231,8 +231,14 @@ impl Wal for ConsensusWal {
     }
 
     async fn load(&self) -> Result<Option<Bytes>, Box<dyn Error + Send>> {
-        let (_, info) = self.wal.read().await.load()[0].clone();
-        Ok(Some(Bytes::from(info)))
+        let record = self.wal.read().await.load();
+        if record.is_empty() {
+            warn!("failed to load wal!");
+            Err(ConsensusError::Other("failed to load wal".to_string()).into())
+        } else {
+            let (_, info) = record[0].clone();
+            Ok(Some(Bytes::from(info)))
+        }
     }
 }
 
