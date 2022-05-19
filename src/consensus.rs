@@ -121,20 +121,17 @@ impl Consensus {
 
     pub async fn proc_reconfigure(&self, configuration: ConsensusConfiguration) {
         let configuration_height = configuration.height;
-        if let Some(ref old_configuration) = *self.reconfigure.read().await {
-            if configuration_height > old_configuration.height {
-                {
-                    info!("set reconfigure!");
-                    *self.reconfigure.write().await = Some(configuration.clone());
-                }
-                info!("update_status!");
-                self.update_status(configuration).await;
+        let old_height = {
+            if let Some(ref config) = *self.reconfigure.read().await {
+                config.height
+            } else {
+                0
             }
-        } else {
-            {
-                info!("init reconfigure!");
-                *self.reconfigure.write().await = Some(configuration.clone());
-            }
+        };
+
+        if old_height == 0 || configuration_height > old_height {
+            info!("set reconfigure!");
+            *self.reconfigure.write().await = Some(configuration.clone());
             info!("update_status!");
             self.update_status(configuration).await;
         }

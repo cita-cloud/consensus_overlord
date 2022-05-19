@@ -218,6 +218,7 @@ async fn run(opts: RunOpts) {
                     let init_block_number = reconfiguration.height;
                     let interval = reconfiguration.block_interval;
 
+                    info!("start consensus run!");
                     consensus
                         .run(
                             init_block_number,
