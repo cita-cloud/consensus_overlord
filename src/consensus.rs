@@ -86,48 +86,57 @@ impl Consensus {
             .unwrap();
     }
 
-    async fn update_status(&self) {
-        if let Some(ref reconfiguration) = *self.reconfigure.read().await {
-            let init_block_number = reconfiguration.height;
-            let interval = reconfiguration.block_interval;
-            let nodes = validators_to_nodes(&reconfiguration.validators);
+    async fn update_status(&self, configuration: ConsensusConfiguration) {
+        let init_block_number = configuration.height;
+        let interval = configuration.block_interval;
+        let nodes = validators_to_nodes(&configuration.validators);
 
-            self.brain.set_nodes(nodes.clone()).await;
+        info!("update nodes!");
+        self.brain.set_nodes(nodes.clone()).await;
 
-            self.overlord_handler
-                .send_msg(
-                    Context::new(),
-                    OverlordMsg::RichStatus(Status {
-                        height: init_block_number,
-                        interval: Some(interval as u64),
-                        timer_config: timer_config(),
-                        authority_list: nodes,
-                    }),
-                )
-                .unwrap();
+        info!("send overlord_handler msg!");
+        self.overlord_handler
+            .send_msg(
+                Context::new(),
+                OverlordMsg::RichStatus(Status {
+                    height: init_block_number,
+                    interval: Some(interval as u64),
+                    timer_config: timer_config(),
+                    authority_list: nodes,
+                }),
+            )
+            .unwrap();
 
-            #[allow(clippy::mutable_key_type)]
-            let mut new_addr_pubkey = HashMap::new();
-            for v in &reconfiguration.validators {
-                let _ = new_addr_pubkey.insert(
-                    Bytes::copy_from_slice(&v[..]),
-                    BlsPublicKey::try_from(v.as_ref()).unwrap(),
-                );
-            }
-            self.crypto.update_addr_pubkey(new_addr_pubkey);
+        info!("update_addr_pubkey!");
+        #[allow(clippy::mutable_key_type)]
+        let mut new_addr_pubkey = HashMap::new();
+        for v in &configuration.validators {
+            let _ = new_addr_pubkey.insert(
+                Bytes::copy_from_slice(&v[..]),
+                BlsPublicKey::try_from(v.as_ref()).unwrap(),
+            );
         }
+        self.crypto.update_addr_pubkey(new_addr_pubkey);
     }
 
     pub async fn proc_reconfigure(&self, configuration: ConsensusConfiguration) {
         let configuration_height = configuration.height;
         if let Some(ref old_configuration) = *self.reconfigure.read().await {
             if configuration_height > old_configuration.height {
-                *self.reconfigure.write().await = Some(configuration);
-                self.update_status().await;
+                {
+                    info!("set reconfigure!");
+                    *self.reconfigure.write().await = Some(configuration.clone());
+                }
+                info!("update_status!");
+                self.update_status(configuration).await;
             }
         } else {
-            *self.reconfigure.write().await = Some(configuration);
-            self.update_status().await;
+            {
+                info!("init reconfigure!");
+                *self.reconfigure.write().await = Some(configuration.clone());
+            }
+            info!("update_status!");
+            self.update_status(configuration).await;
         }
     }
 
@@ -295,8 +304,9 @@ impl OverlordCrypto for ConsensusCrypto {
         tokio::task::block_in_place(move || {
             tokio::runtime::Handle::current().block_on(async move {
                 let map = self.addr_pubkey.read().await;
-                let hash = HashValue::try_from(hash.as_ref())
-                    .map_err(|_| ConsensusError::Other("failed to convert hash value".to_string()))?;
+                let hash = HashValue::try_from(hash.as_ref()).map_err(|_| {
+                    ConsensusError::Other("failed to convert hash value".to_string())
+                })?;
                 let pub_key = map
                     .get(&voter)
                     .ok_or_else(|| ConsensusError::Other("lose public key".to_string()))?;
