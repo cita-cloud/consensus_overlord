@@ -95,17 +95,18 @@ impl Consensus {
         self.brain.set_nodes(nodes.clone()).await;
 
         info!("send overlord_handler msg!");
-        self.overlord_handler
-            .send_msg(
-                Context::new(),
-                OverlordMsg::RichStatus(Status {
-                    height: init_block_number,
-                    interval: Some(interval as u64),
-                    timer_config: timer_config(),
-                    authority_list: nodes,
-                }),
-            )
-            .unwrap();
+        let ret = self.overlord_handler.send_msg(
+            Context::new(),
+            OverlordMsg::RichStatus(Status {
+                height: init_block_number,
+                interval: Some(interval as u64),
+                timer_config: timer_config(),
+                authority_list: nodes,
+            }),
+        );
+        if ret.is_err() {
+            warn!("send overlord_handler msg error! {:?}", ret);
+        }
 
         info!("update_addr_pubkey!");
         #[allow(clippy::mutable_key_type)]
@@ -146,36 +147,48 @@ impl Consensus {
         match msg.r#type.as_str() {
             "SignedVote" => {
                 if let Ok(vote) = SignedVote::decode(&Rlp::new(&msg.msg)) {
-                    self.overlord_handler
-                        .send_msg(Context::new(), OverlordMsg::SignedVote(vote))
-                        .unwrap();
+                    let ret = self
+                        .overlord_handler
+                        .send_msg(Context::new(), OverlordMsg::SignedVote(vote));
+                    if ret.is_err() {
+                        warn!("send overlord_handler msg SignedVote error! {:?}", ret);
+                    }
                 } else {
                     warn!("decode SignedVote failed!");
                 }
             }
             "SignedProposal" => {
                 if let Ok(proposal) = SignedProposal::decode(&Rlp::new(&msg.msg)) {
-                    self.overlord_handler
-                        .send_msg(Context::new(), OverlordMsg::SignedProposal(proposal))
-                        .unwrap();
+                    let ret = self
+                        .overlord_handler
+                        .send_msg(Context::new(), OverlordMsg::SignedProposal(proposal));
+                    if ret.is_err() {
+                        warn!("send overlord_handler msg SignedProposal error! {:?}", ret);
+                    }
                 } else {
                     warn!("decode SignedProposal failed!");
                 }
             }
             "AggregatedVote" => {
                 if let Ok(agg_vote) = AggregatedVote::decode(&Rlp::new(&msg.msg)) {
-                    self.overlord_handler
-                        .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote))
-                        .unwrap();
+                    let ret = self
+                        .overlord_handler
+                        .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote));
+                    if ret.is_err() {
+                        warn!("send overlord_handler msg AggregatedVote error! {:?}", ret);
+                    }
                 } else {
                     warn!("decode AggregatedVote failed!");
                 }
             }
             "SignedChoke" => {
                 if let Ok(choke) = SignedChoke::decode(&Rlp::new(&msg.msg)) {
-                    self.overlord_handler
-                        .send_msg(Context::new(), OverlordMsg::SignedChoke(choke))
-                        .unwrap();
+                    let ret = self
+                        .overlord_handler
+                        .send_msg(Context::new(), OverlordMsg::SignedChoke(choke));
+                    if ret.is_err() {
+                        warn!("send overlord_handler msg SignedChoke error! {:?}", ret);
+                    }
                 } else {
                     warn!("decode SignedChoke failed!");
                 }

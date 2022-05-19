@@ -30,9 +30,7 @@ ophelia-secp256k1 = "0.3"
 hex = "0.4"
 derive_more = "0.99"
 creep = "0.2"
-
 libsm = "0.4"
-
 rlp = "0.5"
 
 [profile.release.package."*"]
