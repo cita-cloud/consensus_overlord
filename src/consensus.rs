@@ -139,11 +139,13 @@ impl Consensus {
     }
 
     pub async fn check_block(&self, _block_with_proof: ProposalWithProof) -> bool {
+        info!("check_block!");
         // todo
         true
     }
 
     pub async fn proc_network_msg(&self, msg: NetworkMsg) {
+        info!("proc_network_msg {}!", msg.r#type.as_str());
         match msg.r#type.as_str() {
             "SignedVote" => {
                 if let Ok(vote) = SignedVote::decode(&Rlp::new(&msg.msg)) {
@@ -219,6 +221,7 @@ impl ConsensusWal {
 #[async_trait]
 impl Wal for ConsensusWal {
     async fn save(&self, info: Bytes) -> Result<(), Box<dyn Error + Send>> {
+        info!("save wal!");
         let current_wal_count = self.wal_count.load(Ordering::SeqCst);
         let next_wal_count = current_wal_count.overflowing_add(1).0;
         self.wal
@@ -231,6 +234,7 @@ impl Wal for ConsensusWal {
     }
 
     async fn load(&self) -> Result<Option<Bytes>, Box<dyn Error + Send>> {
+        info!("load wal!");
         let record = self.wal.read().await.load();
         if record.is_empty() {
             warn!("failed to load wal!");
@@ -453,6 +457,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         _ctx: Context,
         height: u64,
     ) -> Result<(ConsensusProposal, Hash), Box<dyn Error + Send>> {
+        info!("get_block!");
         match controller_client().get_proposal(Empty {}).await {
             Ok(res) => {
                 let response = res.into_inner();
@@ -499,6 +504,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         _hash: Hash,
         speech: ConsensusProposal,
     ) -> Result<(), Box<dyn Error + Send>> {
+        info!("get_block {}!", height);
         match controller_client()
             .check_proposal(Proposal {
                 height,
@@ -533,6 +539,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         height: u64,
         commit: Commit<ConsensusProposal>,
     ) -> Result<Status, Box<dyn Error + Send>> {
+        info!("commit {}!", height);
         let proposal = commit.content.data;
         let proof = commit.proof.rlp_bytes();
 
@@ -598,8 +605,9 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
     async fn get_authority_list(
         &self,
         _ctx: Context,
-        _height: u64,
+        height: u64,
     ) -> Result<Vec<Node>, Box<dyn Error + Send>> {
+        info!("get_authority_list {}!", height);
         Ok(self.get_nodes().await)
     }
 
@@ -608,6 +616,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         _ctx: Context,
         words: OverlordMsg<ConsensusProposal>,
     ) -> Result<(), Box<dyn Error + Send>> {
+        info!("broadcast_to_other!");
         let network_msg = match words {
             OverlordMsg::SignedVote(vote) => NetworkMsg {
                 module: "consensus".to_owned(),
@@ -658,6 +667,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         _name: Bytes,
         words: OverlordMsg<ConsensusProposal>,
     ) -> Result<(), Box<dyn Error + Send>> {
+        info!("transmit_to_relayer!");
         let network_msg = match words {
             OverlordMsg::SignedVote(vote) => NetworkMsg {
                 module: "consensus".to_owned(),
