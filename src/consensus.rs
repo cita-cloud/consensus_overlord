@@ -87,7 +87,7 @@ impl Consensus {
     }
 
     async fn update_status(&self, configuration: ConsensusConfiguration) {
-        let init_block_number = configuration.height;
+        let init_block_number = configuration.height + 1;
         let interval = configuration.block_interval;
         let nodes = validators_to_nodes(&configuration.validators);
 
@@ -551,7 +551,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
                     if status_code::StatusCode::from(status.code)
                         == status_code::StatusCode::Success
                     {
-                        let new_block_number = config.height;
+                        let new_block_number = config.height + 1;
                         let interval = config.block_interval;
                         let nodes = validators_to_nodes(&config.validators);
 
