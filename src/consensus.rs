@@ -277,11 +277,13 @@ impl ConsensusCrypto {
         let private_key = BlsPrivateKey::try_from(private_key_bytes.as_ref()).unwrap();
         let common_ref = "".to_string();
         let pub_key = private_key.pub_key(&common_ref);
+        let mut name = pub_key.to_bytes();
+        let _ = name.split_off(20);
         ConsensusCrypto {
             private_key,
             addr_pubkey: Arc::new(RwLock::new(HashMap::new())),
             common_ref,
-            name: pub_key.to_bytes(),
+            name,
         }
     }
 
