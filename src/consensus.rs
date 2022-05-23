@@ -582,7 +582,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
                         let mut new_addr_pubkey = HashMap::new();
                         for v in config.validators {
                             new_addr_pubkey.insert(
-                                Bytes::copy_from_slice(&v[..]),
+                                Bytes::copy_from_slice(&v[..20]),
                                 BlsPublicKey::try_from(v.as_ref()).unwrap(),
                             );
                         }
