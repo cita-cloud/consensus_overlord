@@ -81,7 +81,12 @@ impl Consensus {
 
     pub async fn run(&self, init_block_number: u64, interval: u64, authority_list: Vec<Node>) {
         self.overlord
-            .run(init_block_number, interval, authority_list, timer_config())
+            .run(
+                init_block_number,
+                interval * 1000,
+                authority_list,
+                timer_config(),
+            )
             .await
             .unwrap();
     }
@@ -99,7 +104,7 @@ impl Consensus {
             Context::new(),
             OverlordMsg::RichStatus(Status {
                 height: init_block_number,
-                interval: Some(interval as u64),
+                interval: Some((interval * 1000) as u64),
                 timer_config: timer_config(),
                 authority_list: nodes,
             }),
@@ -583,7 +588,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
 
                         Ok(Status {
                             height: new_block_number,
-                            interval: Some(interval as u64),
+                            interval: Some((interval * 1000) as u64),
                             timer_config: timer_config(),
                             authority_list: nodes,
                         })

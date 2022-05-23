@@ -85,5 +85,5 @@ pub fn sm3_hash(input: &[u8]) -> [u8; HASH_BYTES_LEN] {
 }
 
 pub fn timer_config() -> Option<DurationConfig> {
-    Some(DurationConfig::new(10, 10, 10, 3))
+    Some(DurationConfig::new(15, 10, 10, 7))
 }
