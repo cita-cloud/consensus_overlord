@@ -68,7 +68,7 @@ pub fn validators_to_nodes(validators: &Vec<Vec<u8>>) -> Vec<Node> {
     let mut nodes = Vec::new();
     for v in validators {
         nodes.push(Node {
-            address: Bytes::copy_from_slice(&v[..]),
+            address: Bytes::copy_from_slice(&v[..20]),
             propose_weight: 1,
             vote_weight: 1,
         })
