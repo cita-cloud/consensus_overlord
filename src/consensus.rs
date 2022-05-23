@@ -146,58 +146,65 @@ impl Consensus {
 
     pub async fn proc_network_msg(&self, msg: NetworkMsg) {
         info!("proc_network_msg {}!", msg.r#type.as_str());
-        match msg.r#type.as_str() {
-            "SignedVote" => {
-                if let Ok(vote) = SignedVote::decode(&Rlp::new(&msg.msg)) {
-                    let ret = self
-                        .overlord_handler
-                        .send_msg(Context::new(), OverlordMsg::SignedVote(vote));
-                    if ret.is_err() {
-                        warn!("send overlord_handler msg SignedVote error! {:?}", ret);
-                    }
-                } else {
-                    warn!("decode SignedVote failed!");
+        let name = hex::encode(&self.crypto.name[0..4]);
+
+        if msg.r#type.as_str() == format!("SignedVote-{}", name).as_str() {
+            if let Ok(vote) = SignedVote::decode(&Rlp::new(&msg.msg)) {
+                let ret = self
+                    .overlord_handler
+                    .send_msg(Context::new(), OverlordMsg::SignedVote(vote));
+                if ret.is_err() {
+                    warn!("send overlord_handler msg SignedVote error! {:?}", ret);
                 }
+            } else {
+                warn!("decode SignedVote failed!");
             }
-            "SignedProposal" => {
-                if let Ok(proposal) = SignedProposal::decode(&Rlp::new(&msg.msg)) {
-                    let ret = self
-                        .overlord_handler
-                        .send_msg(Context::new(), OverlordMsg::SignedProposal(proposal));
-                    if ret.is_err() {
-                        warn!("send overlord_handler msg SignedProposal error! {:?}", ret);
-                    }
-                } else {
-                    warn!("decode SignedProposal failed!");
+        } else if msg.r#type.as_str() == format!("AggregatedVote-{}", name).as_str() {
+            if let Ok(agg_vote) = AggregatedVote::decode(&Rlp::new(&msg.msg)) {
+                let ret = self
+                    .overlord_handler
+                    .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote));
+                if ret.is_err() {
+                    warn!("send overlord_handler msg AggregatedVote- error! {:?}", ret);
                 }
+            } else {
+                warn!("decode AggregatedVote failed!");
             }
-            "AggregatedVote" => {
-                if let Ok(agg_vote) = AggregatedVote::decode(&Rlp::new(&msg.msg)) {
-                    let ret = self
-                        .overlord_handler
-                        .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote));
-                    if ret.is_err() {
-                        warn!("send overlord_handler msg AggregatedVote error! {:?}", ret);
-                    }
-                } else {
-                    warn!("decode AggregatedVote failed!");
+        } else if msg.r#type.as_str() == "AggregatedVote" {
+            if let Ok(agg_vote) = AggregatedVote::decode(&Rlp::new(&msg.msg)) {
+                let ret = self
+                    .overlord_handler
+                    .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote));
+                if ret.is_err() {
+                    warn!("send overlord_handler msg AggregatedVote error! {:?}", ret);
                 }
+            } else {
+                warn!("decode AggregatedVote failed!");
             }
-            "SignedChoke" => {
-                if let Ok(choke) = SignedChoke::decode(&Rlp::new(&msg.msg)) {
-                    let ret = self
-                        .overlord_handler
-                        .send_msg(Context::new(), OverlordMsg::SignedChoke(choke));
-                    if ret.is_err() {
-                        warn!("send overlord_handler msg SignedChoke error! {:?}", ret);
-                    }
-                } else {
-                    warn!("decode SignedChoke failed!");
+        } else if msg.r#type.as_str() == "SignedProposal" {
+            if let Ok(proposal) = SignedProposal::decode(&Rlp::new(&msg.msg)) {
+                let ret = self
+                    .overlord_handler
+                    .send_msg(Context::new(), OverlordMsg::SignedProposal(proposal));
+                if ret.is_err() {
+                    warn!("send overlord_handler msg SignedProposal error! {:?}", ret);
                 }
+            } else {
+                warn!("decode SignedProposal failed!");
             }
-            _ => {
-                warn!("unexpected network msg!");
+        } else if msg.r#type.as_str() == "SignedChoke" {
+            if let Ok(choke) = SignedChoke::decode(&Rlp::new(&msg.msg)) {
+                let ret = self
+                    .overlord_handler
+                    .send_msg(Context::new(), OverlordMsg::SignedChoke(choke));
+                if ret.is_err() {
+                    warn!("send overlord_handler msg SignedChoke error! {:?}", ret);
+                }
+            } else {
+                warn!("decode SignedChoke failed!");
             }
+        } else {
+            warn!("unexpected network msg!");
         }
     }
 }
@@ -504,7 +511,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         _hash: Hash,
         speech: ConsensusProposal,
     ) -> Result<(), Box<dyn Error + Send>> {
-        info!("get_block {}!", height);
+        info!("check_block {}!", height);
         match controller_client()
             .check_proposal(Proposal {
                 height,
@@ -518,16 +525,16 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
                 if status_code::StatusCode::from(scode.code) == status_code::StatusCode::Success {
                     Ok(())
                 } else {
-                    warn!("check_proposal failed {}", scode.code);
+                    warn!("check_block failed {}", scode.code);
                     Err(Box::new(ConsensusError::Other(
-                        "check proposal failed".to_string(),
+                        "check_block failed".to_string(),
                     )))
                 }
             }
             Err(status) => {
-                warn!("check_proposal error: {}", status.to_string());
+                warn!("check_block error: {}", status.to_string());
                 Err(Box::new(ConsensusError::Other(
-                    "check proposal failed".to_string(),
+                    "check_block failed".to_string(),
                 )))
             }
         }
@@ -618,23 +625,11 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
     ) -> Result<(), Box<dyn Error + Send>> {
         info!("broadcast_to_other!");
         let network_msg = match words {
-            OverlordMsg::SignedVote(vote) => NetworkMsg {
-                module: "consensus".to_owned(),
-                r#type: "SignedVote".to_string(),
-                origin: 0,
-                msg: vote.rlp_bytes().to_vec(),
-            },
             OverlordMsg::SignedProposal(proposal) => NetworkMsg {
                 module: "consensus".to_owned(),
                 r#type: "SignedProposal".to_string(),
                 origin: 0,
                 msg: proposal.rlp_bytes().to_vec(),
-            },
-            OverlordMsg::AggregatedVote(agg_vote) => NetworkMsg {
-                module: "consensus".to_owned(),
-                r#type: "AggregatedVote".to_string(),
-                origin: 0,
-                msg: agg_vote.rlp_bytes().to_vec(),
             },
             OverlordMsg::SignedChoke(choke) => NetworkMsg {
                 module: "consensus".to_owned(),
@@ -642,10 +637,16 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
                 origin: 0,
                 msg: choke.rlp_bytes().to_vec(),
             },
+            OverlordMsg::AggregatedVote(agg_vote) => NetworkMsg {
+                module: "consensus".to_owned(),
+                r#type: "AggregatedVote".to_string(),
+                origin: 0,
+                msg: agg_vote.rlp_bytes().to_vec(),
+            },
             _ => {
-                warn!("unexpected network msg!");
+                warn!("broadcast_to_other unexpected network msg!");
                 return Err(Box::new(ConsensusError::Other(
-                    "unexpected network msg".to_string(),
+                    "broadcast_to_other unexpected network msg".to_string(),
                 )));
             }
         };
@@ -664,39 +665,28 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
     async fn transmit_to_relayer(
         &self,
         _ctx: Context,
-        _name: Bytes,
+        name: Bytes,
         words: OverlordMsg<ConsensusProposal>,
     ) -> Result<(), Box<dyn Error + Send>> {
         info!("transmit_to_relayer!");
+        let name = hex::encode(&name[0..4]);
         let network_msg = match words {
             OverlordMsg::SignedVote(vote) => NetworkMsg {
                 module: "consensus".to_owned(),
-                r#type: "SignedVote".to_string(),
+                r#type: format!("SignedVote-{}", name),
                 origin: 0,
                 msg: vote.rlp_bytes().to_vec(),
             },
-            OverlordMsg::SignedProposal(proposal) => NetworkMsg {
-                module: "consensus".to_owned(),
-                r#type: "SignedProposal".to_string(),
-                origin: 0,
-                msg: proposal.rlp_bytes().to_vec(),
-            },
             OverlordMsg::AggregatedVote(agg_vote) => NetworkMsg {
                 module: "consensus".to_owned(),
-                r#type: "AggregatedVote".to_string(),
+                r#type: format!("AggregatedVote-{}", name),
                 origin: 0,
                 msg: agg_vote.rlp_bytes().to_vec(),
             },
-            OverlordMsg::SignedChoke(choke) => NetworkMsg {
-                module: "consensus".to_owned(),
-                r#type: "SignedChoke".to_string(),
-                origin: 0,
-                msg: choke.rlp_bytes().to_vec(),
-            },
             _ => {
-                warn!("unexpected network msg!");
+                warn!("transmit_to_relayer unexpected network msg!");
                 return Err(Box::new(ConsensusError::Other(
-                    "unexpected network msg".to_string(),
+                    "transmit_to_relayer unexpected network msg".to_string(),
                 )));
             }
         };
@@ -706,7 +696,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
             warn!("net client broadcast error {:?}", e);
 
             return Err(Box::new(ConsensusError::Other(
-                " broadcast network msg error".to_string(),
+                " transmit_to_relayer network msg error".to_string(),
             )));
         }
         Ok(())
