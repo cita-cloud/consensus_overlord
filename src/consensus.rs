@@ -32,7 +32,6 @@ use overlord::{
 use rlp::Decodable;
 use rlp::Encodable;
 use rlp::Rlp;
-use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -113,16 +112,12 @@ impl Consensus {
             warn!("send overlord_handler msg error! {:?}", ret);
         }
 
-        info!("update_addr_pubkey!");
-        #[allow(clippy::mutable_key_type)]
-        let mut new_addr_pubkey = HashMap::new();
+        let mut new_pubkeys = Vec::new();
         for v in &configuration.validators {
-            let _ = new_addr_pubkey.insert(
-                Bytes::copy_from_slice(&v[..]),
-                BlsPublicKey::try_from(v.as_ref()).unwrap(),
-            );
+            let pub_key = BlsPublicKey::try_from(v.as_ref()).unwrap();
+            new_pubkeys.push(pub_key);
         }
-        self.crypto.update_addr_pubkey(new_addr_pubkey);
+        self.crypto.update_pubkeys(new_pubkeys).await;
     }
 
     pub async fn proc_reconfigure(&self, configuration: ConsensusConfiguration) {
@@ -266,7 +261,7 @@ use ophelia_blst::{BlsPrivateKey, BlsPublicKey, BlsSignature};
 #[derive(Clone)]
 pub struct ConsensusCrypto {
     pub private_key: BlsPrivateKey,
-    pub addr_pubkey: Arc<RwLock<HashMap<Bytes, BlsPublicKey>>>,
+    pub pubkeys: Arc<RwLock<Vec<BlsPublicKey>>>,
     pub common_ref: String,
     pub name: Bytes,
 }
@@ -279,20 +274,14 @@ impl ConsensusCrypto {
         let pub_key = private_key.pub_key(&common_ref);
         ConsensusCrypto {
             private_key,
-            addr_pubkey: Arc::new(RwLock::new(HashMap::new())),
+            pubkeys: Arc::new(RwLock::new(Vec::new())),
             common_ref,
             name: pub_key.to_bytes(),
         }
     }
 
-    #[allow(clippy::mutable_key_type)]
-    pub fn update_addr_pubkey(&self, new_addr_pubkey: HashMap<Bytes, BlsPublicKey>) {
-        tokio::task::block_in_place(move || {
-            tokio::runtime::Handle::current().block_on(async move {
-                let mut map = self.addr_pubkey.write().await;
-                *map = new_addr_pubkey;
-            })
-        })
+    pub async fn update_pubkeys(&self, new_pubkeys: Vec<BlsPublicKey>) {
+        *self.pubkeys.write().await = new_pubkeys;
     }
 
     pub fn inner_verify_aggregated_signature(
@@ -333,24 +322,19 @@ impl OverlordCrypto for ConsensusCrypto {
         hash: Bytes,
         voter: Bytes,
     ) -> Result<(), Box<dyn Error + Send>> {
-        tokio::task::block_in_place(move || {
-            tokio::runtime::Handle::current().block_on(async move {
-                let map = self.addr_pubkey.read().await;
-                let hash = HashValue::try_from(hash.as_ref()).map_err(|_| {
-                    ConsensusError::Other("failed to convert hash value".to_string())
-                })?;
-                let pub_key = map
-                    .get(&voter)
-                    .ok_or_else(|| ConsensusError::Other("lose public key".to_string()))?;
-                let signature = BlsSignature::try_from(signature.as_ref())
-                    .map_err(|e| ConsensusError::CryptoErr(Box::new(e)))?;
+        let hash = HashValue::try_from(hash.as_ref())
+            .map_err(|_| ConsensusError::Other("failed to convert hash value".to_string()))?;
 
-                signature
-                    .verify(&hash, pub_key, &self.common_ref)
-                    .map_err(|e| ConsensusError::CryptoErr(Box::new(e)))?;
-                Ok(())
-            })
-        })
+        let pub_key = BlsPublicKey::try_from(voter.as_ref())
+            .map_err(|_| ConsensusError::Other("lose public key".to_string()))?;
+
+        let signature = BlsSignature::try_from(signature.as_ref())
+            .map_err(|e| ConsensusError::CryptoErr(Box::new(e)))?;
+
+        signature
+            .verify(&hash, &pub_key, &self.common_ref)
+            .map_err(|e| ConsensusError::CryptoErr(Box::new(e)))?;
+        Ok(())
     }
 
     fn aggregate_signatures(
@@ -358,33 +342,27 @@ impl OverlordCrypto for ConsensusCrypto {
         signatures: Vec<Bytes>,
         voters: Vec<Bytes>,
     ) -> Result<Bytes, Box<dyn Error + Send>> {
-        tokio::task::block_in_place(move || {
-            tokio::runtime::Handle::current().block_on(async move {
-                if signatures.len() != voters.len() {
-                    return Err(ConsensusError::Other(
-                        "signatures length does not match voters length".to_string(),
-                    )
-                    .into());
-                }
+        if signatures.len() != voters.len() {
+            return Err(ConsensusError::Other(
+                "signatures length does not match voters length".to_string(),
+            )
+            .into());
+        }
 
-                let map = self.addr_pubkey.read().await;
-                let mut sigs_pubkeys = Vec::with_capacity(signatures.len());
-                for (sig, addr) in signatures.iter().zip(voters.iter()) {
-                    let signature = BlsSignature::try_from(sig.as_ref())
-                        .map_err(|e| ConsensusError::CryptoErr(Box::new(e)))?;
+        let mut sigs_pubkeys = Vec::with_capacity(signatures.len());
+        for (sig, addr) in signatures.iter().zip(voters.iter()) {
+            let signature = BlsSignature::try_from(sig.as_ref())
+                .map_err(|e| ConsensusError::CryptoErr(Box::new(e)))?;
 
-                    let pub_key = map
-                        .get(addr)
-                        .ok_or_else(|| ConsensusError::Other("lose public key".to_string()))?;
+            let pub_key = BlsPublicKey::try_from(addr.as_ref())
+                .map_err(|_| ConsensusError::Other("lose public key".to_string()))?;
 
-                    sigs_pubkeys.push((signature, pub_key.to_owned()));
-                }
+            sigs_pubkeys.push((signature, pub_key.to_owned()));
+        }
 
-                let sig = BlsSignature::combine(sigs_pubkeys)
-                    .map_err(|e| ConsensusError::CryptoErr(Box::new(e.into())))?;
-                Ok(sig.to_bytes())
-            })
-        })
+        let sig = BlsSignature::combine(sigs_pubkeys)
+            .map_err(|e| ConsensusError::CryptoErr(Box::new(e.into())))?;
+        Ok(sig.to_bytes())
     }
 
     fn verify_aggregated_signature(
@@ -393,22 +371,16 @@ impl OverlordCrypto for ConsensusCrypto {
         hash: Bytes,
         voters: Vec<Bytes>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        tokio::task::block_in_place(move || {
-            tokio::runtime::Handle::current().block_on(async move {
-                let map = self.addr_pubkey.read().await;
-                let mut pub_keys = Vec::with_capacity(voters.len());
+        let mut pub_keys = Vec::with_capacity(voters.len());
 
-                for addr in voters.iter() {
-                    let pub_key = map
-                        .get(addr)
-                        .ok_or_else(|| ConsensusError::Other("lose public key".to_string()))?;
-                    pub_keys.push(pub_key.clone());
-                }
+        for addr in voters.iter() {
+            let pub_key = BlsPublicKey::try_from(addr.as_ref())
+                .map_err(|_| ConsensusError::Other("lose public key".to_string()))?;
+            pub_keys.push(pub_key.clone());
+        }
 
-                self.inner_verify_aggregated_signature(hash, pub_keys, aggregated_signature)?;
-                Ok(())
-            })
-        })
+        self.inner_verify_aggregated_signature(hash, pub_keys, aggregated_signature)?;
+        Ok(())
     }
 }
 
@@ -576,15 +548,14 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
 
                         self.set_nodes(nodes.clone()).await;
 
-                        #[allow(clippy::mutable_key_type)]
-                        let mut new_addr_pubkey = HashMap::new();
+                        let mut new_pubkeys = Vec::new();
                         for v in config.validators {
-                            new_addr_pubkey.insert(
-                                Bytes::copy_from_slice(&v[..]),
-                                BlsPublicKey::try_from(v.as_ref()).unwrap(),
-                            );
+                            let pub_key = BlsPublicKey::try_from(v.as_ref()).map_err(|_| {
+                                ConsensusError::Other("lose public key".to_string())
+                            })?;
+                            new_pubkeys.push(pub_key);
                         }
-                        self.crypto.update_addr_pubkey(new_addr_pubkey);
+                        self.crypto.update_pubkeys(new_pubkeys).await;
 
                         Ok(Status {
                             height: new_block_number,
