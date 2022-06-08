@@ -66,7 +66,7 @@ fn main() {
     }
 }
 
-use cita_cloud_proto::common::{ConsensusConfiguration, Empty, ProposalWithProof, StatusCode};
+use cita_cloud_proto::common::{ConsensusConfiguration, ProposalWithProof, StatusCode};
 use cita_cloud_proto::consensus::consensus_service_server::{
     ConsensusService, ConsensusServiceServer,
 };
@@ -147,7 +147,7 @@ use crate::config::ConsensusConfig;
 use crate::consensus::Consensus;
 use crate::health_check::HealthCheckServer;
 use crate::util::validators_to_nodes;
-use crate::util::{init_grpc_client, kms_client, network_client};
+use crate::util::{init_grpc_client, network_client};
 use std::time::Duration;
 
 #[tokio::main]
@@ -184,27 +184,6 @@ async fn run(opts: RunOpts) {
             }
         }
         warn!("network not ready! Retrying");
-    }
-
-    let mut interval = tokio::time::interval(Duration::from_secs(config.server_retry_interval));
-    loop {
-        interval.tick().await;
-        // waiting kms ready
-        {
-            if let Ok(crypto_info) = kms_client().get_crypto_info(Request::new(Empty {})).await {
-                let inner = crypto_info.into_inner();
-                if inner.status.is_some() {
-                    match status_code::StatusCode::from(inner.status.unwrap()) {
-                        status_code::StatusCode::Success => {
-                            info!("kms({}) is ready!", &inner.name);
-                            break;
-                        }
-                        status => warn!("get get_crypto_info failed: {:?}", status),
-                    }
-                }
-            }
-        }
-        warn!("kms not ready! Retrying");
     }
 
     let consensus = Consensus::new(config.clone());

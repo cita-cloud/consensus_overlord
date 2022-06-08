@@ -15,27 +15,18 @@
 use crate::config::ConsensusConfig;
 use bytes::Bytes;
 use cita_cloud_proto::controller::consensus2_controller_service_client::Consensus2ControllerServiceClient;
-use cita_cloud_proto::kms::kms_service_client::KmsServiceClient;
 use cita_cloud_proto::network::network_service_client::NetworkServiceClient;
 use overlord::types::Node;
 use overlord::DurationConfig;
 use tokio::sync::OnceCell;
 use tonic::transport::{Channel, Endpoint};
 
-pub static KMS_CLIENT: OnceCell<KmsServiceClient<Channel>> = OnceCell::const_new();
 pub static NETWORK_CLIENT: OnceCell<NetworkServiceClient<Channel>> = OnceCell::const_new();
 pub static CONTROLLER_CLIENT: OnceCell<Consensus2ControllerServiceClient<Channel>> =
     OnceCell::const_new();
 
 // This must be called before access to clients.
 pub fn init_grpc_client(config: &ConsensusConfig) {
-    KMS_CLIENT
-        .set({
-            let addr = format!("http://127.0.0.1:{}", config.kms_port);
-            let channel = Endpoint::from_shared(addr).unwrap().connect_lazy().unwrap();
-            KmsServiceClient::new(channel)
-        })
-        .unwrap();
     NETWORK_CLIENT
         .set({
             let addr = format!("http://127.0.0.1:{}", config.network_port);
@@ -50,10 +41,6 @@ pub fn init_grpc_client(config: &ConsensusConfig) {
             Consensus2ControllerServiceClient::new(channel)
         })
         .unwrap();
-}
-
-pub fn kms_client() -> KmsServiceClient<Channel> {
-    KMS_CLIENT.get().cloned().unwrap()
 }
 
 pub fn network_client() -> NetworkServiceClient<Channel> {
