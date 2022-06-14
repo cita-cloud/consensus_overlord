@@ -43,10 +43,15 @@ enum SubCommand {
 #[derive(Parser)]
 struct RunOpts {
     /// Chain config path
-    #[clap(short = 'c', long = "config", default_value = "config.toml")]
+    #[clap(short = 'c', long = "config", default_value = "config.toml", action)]
     config_path: String,
     /// log config path
-    #[clap(short = 'l', long = "log", default_value = "consensus-log4rs.yaml")]
+    #[clap(
+        short = 'l',
+        long = "log",
+        default_value = "consensus-log4rs.yaml",
+        action
+    )]
     log_file: String,
 }
 
@@ -196,16 +201,23 @@ async fn run(opts: RunOpts) {
             interval.tick().await;
             // waiting init reconfiguration msg
             {
-                if let Some(ref reconfiguration) = *consensus.reconfigure.read().await {
-                    let init_block_number = reconfiguration.height;
-                    let interval = reconfiguration.block_interval;
+                if consensus.reconfigure.read().await.is_some() {
+                    let (init_block_number, interval, validators) = {
+                        let reconfiguration_opt = consensus.reconfigure.read().await;
+                        let reconfiguration = reconfiguration_opt.as_ref().unwrap();
+                        (
+                            reconfiguration.height,
+                            reconfiguration.block_interval,
+                            reconfiguration.validators.clone(),
+                        )
+                    };
 
                     info!("start consensus run!");
                     consensus
                         .run(
                             init_block_number,
                             interval as u64,
-                            validators_to_nodes(&reconfiguration.validators),
+                            validators_to_nodes(&validators),
                         )
                         .await;
                 }
