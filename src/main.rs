@@ -202,28 +202,30 @@ async fn run(opts: RunOpts) {
             // waiting init reconfiguration msg
             {
                 if consensus.reconfigure.read().await.is_some() {
-                    let (init_block_number, interval, validators) = {
-                        let reconfiguration_opt = consensus.reconfigure.read().await;
-                        let reconfiguration = reconfiguration_opt.as_ref().unwrap();
-                        (
-                            reconfiguration.height,
-                            reconfiguration.block_interval,
-                            reconfiguration.validators.clone(),
-                        )
-                    };
-
-                    info!("start consensus run!");
-                    consensus
-                        .run(
-                            init_block_number,
-                            interval as u64,
-                            validators_to_nodes(&validators),
-                        )
-                        .await;
+                    break;
                 }
             }
             info!("wating for reconfiguration!");
         }
+
+        let (init_block_number, interval, validators) = {
+            let reconfiguration_opt = consensus.reconfigure.read().await;
+            let reconfiguration = reconfiguration_opt.as_ref().unwrap();
+            (
+                reconfiguration.height,
+                reconfiguration.block_interval,
+                reconfiguration.validators.clone(),
+            )
+        };
+
+        info!("start consensus run!");
+        consensus
+            .run(
+                init_block_number,
+                interval as u64,
+                validators_to_nodes(&validators),
+            )
+            .await;
     });
 
     let addr_str = format!("127.0.0.1:{}", &grpc_port);
