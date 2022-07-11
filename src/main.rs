@@ -65,8 +65,8 @@ fn main() {
     // (as below), requesting just the name used, or both at the same time
     match opts.subcmd {
         SubCommand::Run(opts) => {
-            let fin = run(opts);
-            warn!("Should not reach here {:?}", fin);
+            run(opts);
+            warn!("Should not reach here");
         }
     }
 }
