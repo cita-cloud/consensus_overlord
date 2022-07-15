@@ -14,7 +14,7 @@
 
 use crate::config::ConsensusConfig;
 use crate::error::ConsensusError;
-use crate::util::{timer_config, validators_to_nodes};
+use crate::util::{timer_config, validator_to_origin, validators_to_nodes};
 use async_trait::async_trait;
 use bytes::Bytes;
 use cita_cloud_proto::common::{ConsensusConfiguration, Empty, Proposal, ProposalWithProof};
@@ -146,9 +146,8 @@ impl Consensus {
 
     pub async fn proc_network_msg(&self, msg: NetworkMsg) {
         info!("proc_network_msg {}!", msg.r#type.as_str());
-        let name = hex::encode(&self.crypto.name[0..4]);
 
-        if msg.r#type.as_str() == format!("SignedVote-{}", name).as_str() {
+        if msg.r#type.as_str() == "SignedVote" {
             if let Ok(vote) = SignedVote::decode(&Rlp::new(&msg.msg)) {
                 let ret = self
                     .overlord_handler
@@ -158,17 +157,6 @@ impl Consensus {
                 }
             } else {
                 warn!("decode SignedVote failed!");
-            }
-        } else if msg.r#type.as_str() == format!("AggregatedVote-{}", name).as_str() {
-            if let Ok(agg_vote) = AggregatedVote::decode(&Rlp::new(&msg.msg)) {
-                let ret = self
-                    .overlord_handler
-                    .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote));
-                if ret.is_err() {
-                    warn!("send overlord_handler msg AggregatedVote- error! {:?}", ret);
-                }
-            } else {
-                warn!("decode AggregatedVote failed!");
             }
         } else if msg.r#type.as_str() == "AggregatedVote" {
             if let Ok(agg_vote) = AggregatedVote::decode(&Rlp::new(&msg.msg)) {
@@ -645,18 +633,17 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         words: OverlordMsg<ConsensusProposal>,
     ) -> Result<(), Box<dyn Error + Send>> {
         info!("transmit_to_relayer!");
-        let name = hex::encode(&name[0..4]);
         let network_msg = match words {
             OverlordMsg::SignedVote(vote) => NetworkMsg {
                 module: "consensus".to_owned(),
-                r#type: format!("SignedVote-{}", name),
-                origin: 0,
+                r#type: "SignedVote".to_owned(),
+                origin: validator_to_origin(&name),
                 msg: vote.rlp_bytes().to_vec(),
             },
             OverlordMsg::AggregatedVote(agg_vote) => NetworkMsg {
                 module: "consensus".to_owned(),
-                r#type: format!("AggregatedVote-{}", name),
-                origin: 0,
+                r#type: "AggregatedVote".to_owned(),
+                origin: validator_to_origin(&name),
                 msg: agg_vote.rlp_bytes().to_vec(),
             },
             _ => {
@@ -667,9 +654,9 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
             }
         };
 
-        let resp = network_client().broadcast(network_msg).await;
+        let resp = network_client().send_msg(network_msg).await;
         if let Err(e) = resp {
-            warn!("net client broadcast error {:?}", e);
+            warn!("net client send_msg error {:?}", e);
 
             return Err(Box::new(ConsensusError::Other(
                 " transmit_to_relayer network msg error".to_string(),

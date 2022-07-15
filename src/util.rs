@@ -74,3 +74,9 @@ pub fn sm3_hash(input: &[u8]) -> [u8; HASH_BYTES_LEN] {
 pub fn timer_config() -> Option<DurationConfig> {
     Some(DurationConfig::new(15, 10, 10, 7))
 }
+
+pub fn validator_to_origin(validator_address: &[u8]) -> u64 {
+    let mut decoded = [0; 8];
+    decoded[..8].clone_from_slice(&validator_address[..8]);
+    u64::from_be_bytes(decoded)
+}
