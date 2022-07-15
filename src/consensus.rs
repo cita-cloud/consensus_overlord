@@ -434,14 +434,8 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
             Ok(res) => {
                 let response = res.into_inner();
                 let status_code = response.status.unwrap();
-                let proposal = response.proposal.unwrap();
 
-                if status_code.code == u32::from(status_code::StatusCode::NoneProposal) {
-                    warn!("get_block error: NoneProposal");
-                    Err(Box::new(ConsensusError::Other(
-                        "get block failed".to_string(),
-                    )))
-                } else {
+                if let Some(proposal) = response.proposal {
                     let proposal_height = proposal.height;
                     let proposal_data = proposal.data;
 
@@ -458,6 +452,11 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
                             Bytes::from(sm3_hash(&proposal_data).to_vec()),
                         ))
                     }
+                } else {
+                    warn!("get_block error: {}", status_code.code);
+                    Err(Box::new(ConsensusError::Other(
+                        "get block failed".to_string(),
+                    )))
                 }
             }
             Err(status) => {
