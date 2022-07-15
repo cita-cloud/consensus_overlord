@@ -30,14 +30,14 @@ pub fn init_grpc_client(config: &ConsensusConfig) {
     NETWORK_CLIENT
         .set({
             let addr = format!("http://127.0.0.1:{}", config.network_port);
-            let channel = Endpoint::from_shared(addr).unwrap().connect_lazy().unwrap();
+            let channel = Endpoint::from_shared(addr).unwrap().connect_lazy();
             NetworkServiceClient::new(channel)
         })
         .unwrap();
     CONTROLLER_CLIENT
         .set({
             let addr = format!("http://127.0.0.1:{}", config.controller_port);
-            let channel = Endpoint::from_shared(addr).unwrap().connect_lazy().unwrap();
+            let channel = Endpoint::from_shared(addr).unwrap().connect_lazy();
             Consensus2ControllerServiceClient::new(channel)
         })
         .unwrap();
