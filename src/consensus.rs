@@ -17,6 +17,7 @@ use crate::error::ConsensusError;
 use crate::util::{timer_config, validator_to_origin, validators_to_nodes};
 use async_trait::async_trait;
 use bytes::Bytes;
+use cita_cloud_proto::client::{ControllerClientTrait, NetworkClientTrait};
 use cita_cloud_proto::common::{ConsensusConfiguration, Empty, Proposal, ProposalWithProof};
 use cita_cloud_proto::network::NetworkMsg;
 use cloud_util::wal::{LogType, Wal as CITAWal};
@@ -431,8 +432,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
     ) -> Result<(ConsensusProposal, Hash), Box<dyn Error + Send>> {
         info!("get_block!");
         match controller_client().get_proposal(Empty {}).await {
-            Ok(res) => {
-                let response = res.into_inner();
+            Ok(response) => {
                 let status_code = response.status.unwrap();
 
                 if let Some(proposal) = response.proposal {
@@ -483,9 +483,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
             })
             .await
         {
-            Ok(res) => {
-                let scode = res.into_inner();
-
+            Ok(scode) => {
                 if status_code::StatusCode::from(scode.code) == status_code::StatusCode::Success {
                     Ok(())
                 } else {
@@ -523,8 +521,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         };
 
         match controller_client().commit_block(pproof).await {
-            Ok(res) => {
-                let config = res.into_inner();
+            Ok(config) => {
                 if let Some((status, config)) = config.status.zip(config.config) {
                     if status_code::StatusCode::from(status.code)
                         == status_code::StatusCode::Success

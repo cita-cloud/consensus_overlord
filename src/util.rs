@@ -14,40 +14,55 @@
 
 use crate::config::ConsensusConfig;
 use bytes::Bytes;
+use cita_cloud_proto::client::{ClientOptions, InterceptedSvc};
 use cita_cloud_proto::controller::consensus2_controller_service_client::Consensus2ControllerServiceClient;
 use cita_cloud_proto::network::network_service_client::NetworkServiceClient;
+use cita_cloud_proto::retry::RetryClient;
 use overlord::types::Node;
 use overlord::DurationConfig;
 use tokio::sync::OnceCell;
-use tonic::transport::{Channel, Endpoint};
 
-pub static NETWORK_CLIENT: OnceCell<NetworkServiceClient<Channel>> = OnceCell::const_new();
-pub static CONTROLLER_CLIENT: OnceCell<Consensus2ControllerServiceClient<Channel>> =
+pub static NETWORK_CLIENT: OnceCell<RetryClient<NetworkServiceClient<InterceptedSvc>>> =
     OnceCell::const_new();
+pub static CONTROLLER_CLIENT: OnceCell<
+    RetryClient<Consensus2ControllerServiceClient<InterceptedSvc>>,
+> = OnceCell::const_new();
+
+const CLIENT_NAME: &str = "consensus";
 
 // This must be called before access to clients.
 pub fn init_grpc_client(config: &ConsensusConfig) {
     NETWORK_CLIENT
         .set({
-            let addr = format!("http://127.0.0.1:{}", config.network_port);
-            let channel = Endpoint::from_shared(addr).unwrap().connect_lazy();
-            NetworkServiceClient::new(channel)
+            let client_options = ClientOptions::new(
+                CLIENT_NAME.to_string(),
+                format!("http://127.0.0.1:{}", config.network_port),
+            );
+            match client_options.connect_network() {
+                Ok(retry_client) => retry_client,
+                Err(e) => panic!("client init error: {:?}", &e),
+            }
         })
         .unwrap();
     CONTROLLER_CLIENT
         .set({
-            let addr = format!("http://127.0.0.1:{}", config.controller_port);
-            let channel = Endpoint::from_shared(addr).unwrap().connect_lazy();
-            Consensus2ControllerServiceClient::new(channel)
+            let client_options = ClientOptions::new(
+                CLIENT_NAME.to_string(),
+                format!("http://127.0.0.1:{}", config.controller_port),
+            );
+            match client_options.connect_controller() {
+                Ok(retry_client) => retry_client,
+                Err(e) => panic!("client init error: {:?}", &e),
+            }
         })
         .unwrap();
 }
 
-pub fn network_client() -> NetworkServiceClient<Channel> {
+pub fn network_client() -> RetryClient<NetworkServiceClient<InterceptedSvc>> {
     NETWORK_CLIENT.get().cloned().unwrap()
 }
 
-pub fn controller_client() -> Consensus2ControllerServiceClient<Channel> {
+pub fn controller_client() -> RetryClient<Consensus2ControllerServiceClient<InterceptedSvc>> {
     CONTROLLER_CLIENT.get().cloned().unwrap()
 }
 
