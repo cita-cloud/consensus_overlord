@@ -71,6 +71,7 @@ fn main() {
     }
 }
 
+use cita_cloud_proto::client::NetworkClientTrait;
 use cita_cloud_proto::common::{ConsensusConfiguration, ProposalWithProof, StatusCode};
 use cita_cloud_proto::consensus::consensus_service_server::{
     ConsensusService, ConsensusServiceServer,
@@ -176,14 +177,17 @@ async fn run(opts: RunOpts) {
         interval.tick().await;
         // register endpoint
         {
-            let request = Request::new(RegisterInfo {
+            let register_info = RegisterInfo {
                 module_name: "consensus".to_owned(),
                 hostname: "127.0.0.1".to_owned(),
                 port: grpc_port.clone(),
-            });
+            };
 
-            if let Ok(response) = network_client().register_network_msg_handler(request).await {
-                if response.into_inner().code == u32::from(status_code::StatusCode::Success) {
+            if let Ok(scode) = network_client()
+                .register_network_msg_handler(register_info)
+                .await
+            {
+                if scode.code == u32::from(status_code::StatusCode::Success) {
                     break;
                 }
             }
