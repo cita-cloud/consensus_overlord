@@ -24,11 +24,12 @@ use cloud_util::wal::{LogType, Wal as CITAWal};
 use creep::Context;
 use log::{info, warn};
 use overlord::types::{
-    AggregatedVote, Commit, Hash, Node, OverlordMsg, SignedChoke, SignedProposal, SignedVote,
-    Status, ViewChangeReason,
+    AggregatedVote, Commit, Hash, Node, OverlordMsg, Proof, SignedChoke, SignedProposal,
+    SignedVote, Status, ViewChangeReason, Vote, VoteType,
 };
 use overlord::{
-    Codec, Consensus as OverlordConsensus, Crypto as OverlordCrypto, Overlord, OverlordHandler, Wal,
+    extract_voters, Codec, Consensus as OverlordConsensus, Crypto as OverlordCrypto, Overlord,
+    OverlordHandler, Wal,
 };
 use rlp::Decodable;
 use rlp::Encodable;
@@ -139,10 +140,68 @@ impl Consensus {
         }
     }
 
-    pub async fn check_block(&self, _block_with_proof: ProposalWithProof) -> bool {
-        info!("check_block!");
-        // todo
-        true
+    pub async fn check_block(&self, proposal_with_proof: ProposalWithProof) -> bool {
+        if let Some(proposal) = proposal_with_proof.proposal {
+            let proposal_height = proposal.height;
+            let proposal_data = proposal.data;
+            let proposal_hash = Bytes::from(sm3_hash(&proposal_data).to_vec());
+
+            info!(
+                "grpc check_block: proposal height: {} hash: {}",
+                proposal_height,
+                hex::encode(&proposal_hash)
+            );
+            // we must move this ahead of Rlp::new, because Rlp is not send
+            let mut authority_list = self.brain.get_nodes().await;
+
+            if let Ok(proof) = Proof::decode(&Rlp::new(&proposal_with_proof.proof)) {
+                info!(
+                    "grpc check_block: proof height: {} round {} hash: {}",
+                    proof.height,
+                    proof.round,
+                    hex::encode(&proof.block_hash)
+                );
+                if proof.block_hash == proposal_hash && proof.height == proposal_height {
+                    if let Ok(signed_voters) =
+                        extract_voters(&mut authority_list, &proof.signature.address_bitmap)
+                    {
+                        let vote = Vote {
+                            height: proof.height,
+                            round: proof.round,
+                            vote_type: VoteType::Precommit,
+                            block_hash: Bytes::from(proof.block_hash.to_vec()),
+                        };
+                        let vote_hash = self.crypto.hash(Bytes::from(rlp::encode(&vote)));
+                        if self
+                            .crypto
+                            .verify_aggregated_signature(
+                                proof.signature.signature,
+                                vote_hash,
+                                signed_voters,
+                            )
+                            .is_ok()
+                        {
+                            true
+                        } else {
+                            warn!("grpc check_block: verify_aggregated_signature failed!");
+                            false
+                        }
+                    } else {
+                        warn!("grpc check_block: extract voters failed!");
+                        false
+                    }
+                } else {
+                    warn!("grpc check_block: check height or block hash in proof failed!");
+                    false
+                }
+            } else {
+                warn!("grpc check_block: decode proof failed!");
+                false
+            }
+        } else {
+            warn!("grpc check_block: no proposal!");
+            false
+        }
     }
 
     pub async fn proc_network_msg(&self, msg: NetworkMsg) {

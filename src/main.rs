@@ -114,7 +114,6 @@ impl ConsensusService for ConsensusServer {
         request: Request<ProposalWithProof>,
     ) -> Result<Response<StatusCode>, Status> {
         let block_with_proof = request.into_inner();
-        // todo
         info!("check_block {:?}", block_with_proof);
         let res = self.consensus.check_block(block_with_proof).await;
         let code = if res {
