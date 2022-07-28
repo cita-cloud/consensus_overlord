@@ -21,7 +21,7 @@ mod util;
 
 use crate::panic_hook::set_panic_handler;
 use clap::Parser;
-use log::{info, warn};
+use log::{debug, info, warn};
 
 /// This doc string acts as a help message when the user runs '--help'
 /// as do all doc strings on fields
@@ -101,7 +101,7 @@ impl ConsensusService for ConsensusServer {
         request: Request<ConsensusConfiguration>,
     ) -> Result<Response<StatusCode>, Status> {
         let configuration = request.into_inner();
-        info!("reconfigure {:?}", configuration);
+        debug!("reconfigure {:?}", configuration);
         self.consensus.proc_reconfigure(configuration).await;
         let reply = StatusCode {
             code: status_code::StatusCode::Success.into(),
@@ -114,8 +114,7 @@ impl ConsensusService for ConsensusServer {
         request: Request<ProposalWithProof>,
     ) -> Result<Response<StatusCode>, Status> {
         let block_with_proof = request.into_inner();
-        // todo
-        info!("check_block {:?}", block_with_proof);
+        debug!("check_block {:?}", block_with_proof);
         let res = self.consensus.check_block(block_with_proof).await;
         let code = if res {
             status_code::StatusCode::Success.into()
