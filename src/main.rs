@@ -44,16 +44,14 @@ enum SubCommand {
 #[derive(Parser)]
 struct RunOpts {
     /// Chain config path
-    #[clap(short = 'c', long = "config", default_value = "config.toml", action)]
+    #[clap(short = 'c', long = "config", default_value = "config.toml")]
     config_path: String,
     /// log config path
-    #[clap(
-        short = 'l',
-        long = "log",
-        default_value = "consensus-log4rs.yaml",
-        action
-    )]
+    #[clap(short = 'l', long = "log", default_value = "consensus-log4rs.yaml")]
     log_file: String,
+    /// private key path
+    #[clap(short = 'p', long = "private_key_path", default_value = "private_key")]
+    private_key_path: String,
 }
 
 fn main() {
@@ -159,13 +157,14 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn run(opts: RunOpts) {
-    // load service config
-    let config = ConsensusConfig::new(&opts.config_path);
-
     // init log4rs
     log4rs::init_file(&opts.log_file, Default::default())
         .map_err(|e| println!("log init err: {}", e))
         .unwrap();
+
+    // load service config
+    let mut config = ConsensusConfig::new(&opts.config_path);
+    config.private_key_path = opts.private_key_path;
 
     let grpc_port = config.consensus_port.to_string();
 
