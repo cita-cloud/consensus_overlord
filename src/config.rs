@@ -26,6 +26,7 @@ pub struct ConsensusConfig {
     pub server_retry_interval: u64,
     pub wal_path: String,
     pub private_key_path: String,
+    pub enable_metrics: bool,
 }
 
 impl Default for ConsensusConfig {
@@ -39,6 +40,7 @@ impl Default for ConsensusConfig {
             server_retry_interval: 3,
             wal_path: "./overlord_wal".to_string(),
             private_key_path: "./private_key".to_string(),
+            enable_metrics: true,
         }
     }
 }

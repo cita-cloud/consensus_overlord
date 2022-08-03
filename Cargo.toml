@@ -19,11 +19,6 @@ serde = "1.0"
 serde_derive = "1.0"
 bytes = { version = "1.1", features = ["serde"] }
 async-trait = "0.1"
-
-cloud-util = { git = "https://github.com/cita-cloud/cloud-util.git" }
-cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto.git" }
-status_code = { package = "cloud-code", git = "https://github.com/cita-cloud/status_code.git" }
-
 ophelia = "0.3"
 ophelia-blst = "0.3"
 ophelia-secp256k1 = "0.3"
@@ -32,6 +27,14 @@ derive_more = "0.99"
 creep = "0.2"
 libsm = "0.4"
 rlp = "0.5"
+tower = "0.4.13"
+futures = "0.3.21"
+hyper = { version = "0.14", features = ["full"] }
+prometheus = "0.13"
+
+cloud-util = { git = "https://github.com/cita-cloud/cloud-util.git" }
+cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto.git" }
+status_code = { package = "cloud-code", git = "https://github.com/cita-cloud/status_code.git" }
 
 [profile.release.package."*"]
 # Set the default for dependencies.

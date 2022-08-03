@@ -16,6 +16,7 @@ mod config;
 mod consensus;
 mod error;
 mod health_check;
+mod metrics;
 mod panic_hook;
 mod util;
 
@@ -151,6 +152,7 @@ impl NetworkMsgHandlerService for ConsensusServer {
 use crate::config::ConsensusConfig;
 use crate::consensus::Consensus;
 use crate::health_check::HealthCheckServer;
+use crate::metrics::{run_metrics_exporter, MiddlewareLayer};
 use crate::util::validators_to_nodes;
 use crate::util::{init_grpc_client, network_client};
 use std::time::Duration;
@@ -164,10 +166,13 @@ async fn run(opts: RunOpts) {
     log4rs::init_file(&opts.log_file, Default::default())
         .map_err(|e| println!("log init err: {}", e))
         .unwrap();
-    info!("start consensus overlord");
 
     let grpc_port = config.consensus_port.to_string();
-    info!("grpc port of this service: {}", &grpc_port);
+
+    info!("grpc port of consensus_overlord: {}", &grpc_port);
+
+    let addr_str = format!("127.0.0.1:{}", &grpc_port);
+    let addr = addr_str.parse().unwrap();
 
     init_grpc_client(&config);
 
@@ -231,13 +236,37 @@ async fn run(opts: RunOpts) {
             .await;
     });
 
-    let addr_str = format!("127.0.0.1:{}", &grpc_port);
-    let addr = addr_str.parse().unwrap();
+    let layer = if config.enable_metrics {
+        tokio::spawn(async move {
+            run_metrics_exporter().await.unwrap();
+        });
 
-    let _ = Server::builder()
-        .add_service(ConsensusServiceServer::new(consensus_server.clone()))
-        .add_service(NetworkMsgHandlerServiceServer::new(consensus_server))
-        .add_service(HealthServer::new(HealthCheckServer {}))
-        .serve(addr)
-        .await;
+        Some(
+            tower::ServiceBuilder::new()
+                .layer(MiddlewareLayer::default())
+                .into_inner(),
+        )
+    } else {
+        None
+    };
+
+    info!("start consensus_overlord grpc server");
+    let _ = if layer.is_some() {
+        info!("metrics on");
+        Server::builder()
+            .layer(layer.unwrap())
+            .add_service(ConsensusServiceServer::new(consensus_server.clone()))
+            .add_service(NetworkMsgHandlerServiceServer::new(consensus_server))
+            .add_service(HealthServer::new(HealthCheckServer {}))
+            .serve(addr)
+            .await
+    } else {
+        info!("metrics off");
+        Server::builder()
+            .add_service(ConsensusServiceServer::new(consensus_server.clone()))
+            .add_service(NetworkMsgHandlerServiceServer::new(consensus_server))
+            .add_service(HealthServer::new(HealthCheckServer {}))
+            .serve(addr)
+            .await
+    };
 }
