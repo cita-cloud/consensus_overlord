@@ -37,8 +37,8 @@ impl Default for ConsensusConfig {
             key_id: 1,
             node_address: "".to_string(),
             server_retry_interval: 3,
-            wal_path: "./overlord_wal".to_string(),
-            private_key_path: "./private_key".to_string(),
+            wal_path: "overlord_wal".to_string(),
+            private_key_path: "private_key".to_string(),
         }
     }
 }
