@@ -66,7 +66,7 @@ pub fn controller_client() -> RetryClient<Consensus2ControllerServiceClient<Inte
     CONTROLLER_CLIENT.get().cloned().unwrap()
 }
 
-pub fn validators_to_nodes(validators: &Vec<Vec<u8>>) -> Vec<Node> {
+pub fn validators_to_nodes(validators: &[Vec<u8>]) -> Vec<Node> {
     let mut nodes = Vec::new();
     for v in validators {
         nodes.push(Node {
