@@ -18,7 +18,10 @@ use crate::util::{timer_config, validator_to_origin, validators_to_nodes};
 use async_trait::async_trait;
 use bytes::Bytes;
 use cita_cloud_proto::client::{ControllerClientTrait, NetworkClientTrait};
-use cita_cloud_proto::common::{ConsensusConfiguration, Empty, Proposal, ProposalWithProof};
+use cita_cloud_proto::common::{
+    ConsensusConfiguration, ConsensusConfigurationResponse, Empty, Proposal, ProposalWithProof,
+    StatusCode,
+};
 use cita_cloud_proto::network::NetworkMsg;
 use cloud_util::wal::{LogType, Wal as CITAWal};
 use creep::Context;
@@ -253,6 +256,36 @@ impl Consensus {
             }
         } else {
             warn!("unexpected network msg!");
+        }
+    }
+
+    pub async fn ping_controller(&self) {
+        let pproof = ProposalWithProof {
+            proposal: Some(Proposal {
+                height: u64::MAX,
+                data: vec![],
+            }),
+            proof: vec![],
+        };
+
+        match controller_client().commit_block(pproof).await {
+            Ok(config) => {
+                if let ConsensusConfigurationResponse {
+                    status: Some(StatusCode { code: 0 }),
+                    config: Some(consensus_config),
+                } = config
+                {
+                    self.proc_reconfigure(consensus_config).await;
+                } else {
+                    warn!(
+                        "ping_controller: commit_block error: {}",
+                        config.status.unwrap_or(StatusCode { code: 9999 }).code
+                    );
+                }
+            }
+            Err(err) => {
+                warn!("ping_controller: commit_block error: {}", err);
+            }
         }
     }
 }

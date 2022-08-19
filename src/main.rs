@@ -205,6 +205,8 @@ async fn run(opts: RunOpts) {
             {
                 if consensus.reconfigure.read().await.is_some() {
                     break;
+                } else {
+                    consensus.ping_controller().await;
                 }
             }
             info!("wating for reconfiguration!");
