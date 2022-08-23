@@ -156,6 +156,8 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn run(opts: RunOpts) {
+    tokio::spawn(cloud_util::signal::handle_signals());
+
     // init log4rs
     log4rs::init_file(&opts.log_file, Default::default())
         .map_err(|e| println!("log init err: {}", e))
