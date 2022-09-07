@@ -2,4 +2,5 @@
 network_port = 50000
 consensus_port = 50001
 controller_port = 50004
-node_address = '0x37d1c7449bfe76fe9c445e626da06265e9377601'
+enable_metrics = true
+metrics_port = 60001
