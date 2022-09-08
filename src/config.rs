@@ -21,8 +21,6 @@ pub struct ConsensusConfig {
     pub network_port: u16,
     pub consensus_port: u16,
     pub controller_port: u16,
-    pub key_id: u64,
-    pub node_address: String,
     pub server_retry_interval: u64,
     pub wal_path: String,
     pub private_key_path: String,
@@ -37,8 +35,6 @@ impl Default for ConsensusConfig {
             network_port: 50000,
             consensus_port: 50001,
             controller_port: 50004,
-            key_id: 1,
-            node_address: "".to_string(),
             server_retry_interval: 3,
             wal_path: "overlord_wal".to_string(),
             private_key_path: "private_key".to_string(),
@@ -68,10 +64,7 @@ mod tests {
         assert_eq!(config.network_port, 50000);
         assert_eq!(config.consensus_port, 50001);
         assert_eq!(config.controller_port, 50004);
-        assert_eq!(config.controller_port, 50004);
-        assert_eq!(
-            config.node_address,
-            "0x37d1c7449bfe76fe9c445e626da06265e9377601".to_string()
-        );
+        assert!(config.enable_metrics);
+        assert_eq!(config.metrics_port, 60001);
     }
 }
