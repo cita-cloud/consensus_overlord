@@ -29,9 +29,9 @@ libsm = "0.5"
 rlp = "0.5"
 tower = "0.4.13"
 
-cloud-util = { git = "https://github.com/cita-cloud/cloud-util.git" }
-cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto.git" }
-status_code = { package = "cloud-code", git = "https://github.com/cita-cloud/status_code.git" }
+cita_cloud_proto = "=6.6.1"
+status_code = { package = "cloud-code", version = "0.5" }
+cloud-util = "0.5.0"
 
 [profile.release.package."*"]
 # Set the default for dependencies.
