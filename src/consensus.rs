@@ -136,10 +136,10 @@ impl Consensus {
         };
 
         if old_height == 0 || configuration_height > old_height {
-            info!("set reconfigure!");
-            *self.reconfigure.write().await = Some(configuration.clone());
             info!("update_status!");
-            self.update_status(configuration).await;
+            self.update_status(configuration.clone()).await;
+            info!("set reconfigure!");
+            *self.reconfigure.write().await = Some(configuration);
         }
     }
 
@@ -545,7 +545,10 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
                         ))
                     }
                 } else {
-                    warn!("get_block error: {}", status_code.code);
+                    warn!(
+                        "get_block error: {}",
+                        status_code::StatusCode::from(status_code)
+                    );
                     Err(Box::new(ConsensusError::Other(
                         "get block failed".to_string(),
                     )))
@@ -567,7 +570,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         _hash: Hash,
         speech: ConsensusProposal,
     ) -> Result<(), Box<dyn Error + Send>> {
-        info!("check_block {}!", height);
+        info!("check_proposal {}!", height);
         match controller_client()
             .check_proposal(Proposal {
                 height,
@@ -579,16 +582,16 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
                 if status_code::StatusCode::from(scode.code) == status_code::StatusCode::Success {
                     Ok(())
                 } else {
-                    warn!("check_block failed {}", scode.code);
+                    warn!("check_proposal failed {}", scode.code);
                     Err(Box::new(ConsensusError::Other(
-                        "check_block failed".to_string(),
+                        "check_proposal failed".to_string(),
                     )))
                 }
             }
             Err(status) => {
-                warn!("check_block error: {}", status.to_string());
+                warn!("check_proposal error: {}", status.to_string());
                 Err(Box::new(ConsensusError::Other(
-                    "check_block failed".to_string(),
+                    "check_proposal failed".to_string(),
                 )))
             }
         }
