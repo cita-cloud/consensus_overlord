@@ -35,7 +35,7 @@ impl Default for ConsensusConfig {
             network_port: 50000,
             consensus_port: 50001,
             controller_port: 50004,
-            server_retry_interval: 3,
+            server_retry_interval: 1,
             wal_path: "overlord_wal".to_string(),
             private_key_path: "private_key".to_string(),
             enable_metrics: true,

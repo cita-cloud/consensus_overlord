@@ -111,14 +111,19 @@ impl ConsensusService for ConsensusServer {
         &self,
         request: Request<ProposalWithProof>,
     ) -> Result<Response<StatusCode>, Status> {
-        let block_with_proof = request.into_inner();
-        debug!("check_block {:?}", block_with_proof);
-        let res = self.consensus.check_block(block_with_proof).await;
-        let code = if res {
-            status_code::StatusCode::Success.into()
+        let code = if self.consensus.reconfigure.read().await.is_none() {
+            status_code::StatusCode::ConsensusServerNotReady.into()
         } else {
-            status_code::StatusCode::ProposalCheckError.into()
+            let block_with_proof = request.into_inner();
+            debug!("check_block {:?}", block_with_proof);
+            let res = self.consensus.check_block(block_with_proof).await;
+            if res {
+                status_code::StatusCode::Success.into()
+            } else {
+                status_code::StatusCode::ProposalCheckError.into()
+            }
         };
+
         Ok(Response::new(StatusCode { code }))
     }
 }
