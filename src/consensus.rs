@@ -23,6 +23,7 @@ use cita_cloud_proto::common::{
     StatusCode,
 };
 use cita_cloud_proto::network::NetworkMsg;
+use cita_cloud_proto::status_code::StatusCodeEnum;
 use cloud_util::wal::{LogType, Wal as CITAWal};
 use creep::Context;
 use log::{info, warn};
@@ -545,10 +546,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
                         ))
                     }
                 } else {
-                    warn!(
-                        "get_block error: {}",
-                        status_code::StatusCode::from(status_code)
-                    );
+                    warn!("get_block error: {}", StatusCodeEnum::from(status_code));
                     Err(Box::new(ConsensusError::Other(
                         "get block failed".to_string(),
                     )))
@@ -579,7 +577,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
             .await
         {
             Ok(scode) => {
-                if status_code::StatusCode::from(scode.code) == status_code::StatusCode::Success {
+                if StatusCodeEnum::from(scode.code) == StatusCodeEnum::Success {
                     Ok(())
                 } else {
                     warn!("check_proposal failed {}", scode.code);
@@ -618,9 +616,7 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         match controller_client().commit_block(pproof).await {
             Ok(config) => {
                 if let Some((status, config)) = config.status.zip(config.config) {
-                    if status_code::StatusCode::from(status.code)
-                        == status_code::StatusCode::Success
-                    {
+                    if StatusCodeEnum::from(status.code) == StatusCodeEnum::Success {
                         let new_block_number = config.height + 1;
                         let interval = config.block_interval;
                         let nodes = validators_to_nodes(&config.validators);
