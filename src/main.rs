@@ -78,6 +78,7 @@ use cita_cloud_proto::health_check::health_server::HealthServer;
 use cita_cloud_proto::network::network_msg_handler_service_server::NetworkMsgHandlerService;
 use cita_cloud_proto::network::network_msg_handler_service_server::NetworkMsgHandlerServiceServer;
 use cita_cloud_proto::network::{NetworkMsg, RegisterInfo};
+use cita_cloud_proto::status_code::StatusCodeEnum;
 use tonic::{transport::Server, Request, Response, Status};
 
 // grpc server of RPC
@@ -102,7 +103,7 @@ impl ConsensusService for ConsensusServer {
         debug!("reconfigure {:?}", configuration);
         self.consensus.proc_reconfigure(configuration).await;
         let reply = StatusCode {
-            code: status_code::StatusCode::Success.into(),
+            code: StatusCodeEnum::Success as u32,
         };
         Ok(Response::new(reply))
     }
@@ -112,15 +113,15 @@ impl ConsensusService for ConsensusServer {
         request: Request<ProposalWithProof>,
     ) -> Result<Response<StatusCode>, Status> {
         let code = if self.consensus.reconfigure.read().await.is_none() {
-            status_code::StatusCode::ConsensusServerNotReady.into()
+            StatusCodeEnum::ConsensusServerNotReady as u32
         } else {
             let block_with_proof = request.into_inner();
             debug!("check_block {:?}", block_with_proof);
             let res = self.consensus.check_block(block_with_proof).await;
             if res {
-                status_code::StatusCode::Success.into()
+                StatusCodeEnum::Success as u32
             } else {
-                status_code::StatusCode::ProposalCheckError.into()
+                StatusCodeEnum::ProposalCheckError as u32
             }
         };
 
@@ -144,7 +145,7 @@ impl NetworkMsgHandlerService for ConsensusServer {
             );
             self.consensus.proc_network_msg(msg).await;
             let reply = StatusCode {
-                code: status_code::StatusCode::Success.into(),
+                code: StatusCodeEnum::Success as u32,
             };
             Ok(tonic::Response::new(reply))
         }
@@ -196,7 +197,7 @@ async fn run(opts: RunOpts) {
                 .register_network_msg_handler(register_info)
                 .await
             {
-                if scode.code == u32::from(status_code::StatusCode::Success) {
+                if scode.code == (StatusCodeEnum::Success as u32) {
                     break;
                 }
             }
