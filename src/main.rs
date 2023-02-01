@@ -206,7 +206,7 @@ async fn run(opts: RunOpts) {
         warn!("network not ready! Retrying");
     }
 
-    let consensus = Consensus::new(config.clone());
+    let consensus = Consensus::new(config.clone()).await;
 
     let consensus_server = ConsensusServer::new(consensus.clone());
 

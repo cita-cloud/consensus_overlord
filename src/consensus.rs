@@ -59,8 +59,8 @@ pub struct Consensus {
 }
 
 impl Consensus {
-    pub fn new(config: ConsensusConfig) -> Self {
-        let wal = ConsensusWal::new(&config.wal_path);
+    pub async fn new(config: ConsensusConfig) -> Self {
+        let wal = ConsensusWal::new(&config.wal_path).await;
         let crypto = ConsensusCrypto::new(&config.private_key_path);
         let brain = Brain::new(crypto.clone());
 
@@ -298,9 +298,9 @@ pub struct ConsensusWal {
 }
 
 impl ConsensusWal {
-    pub fn new(wal_path: &str) -> Self {
+    pub async fn new(wal_path: &str) -> Self {
         ConsensusWal {
-            wal: Arc::new(RwLock::new(CITAWal::create(wal_path).unwrap())),
+            wal: Arc::new(RwLock::new(CITAWal::create(wal_path).await.unwrap())),
             wal_count: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -317,6 +317,7 @@ impl Wal for ConsensusWal {
             .write()
             .await
             .save(next_wal_count, LogType::Skip, info.as_ref())
+            .await
             .map_err(ConsensusError::WALErr)?;
         self.wal_count.store(next_wal_count, Ordering::SeqCst);
         Ok(())
@@ -324,7 +325,7 @@ impl Wal for ConsensusWal {
 
     async fn load(&self) -> Result<Option<Bytes>, Box<dyn Error + Send>> {
         info!("load wal!");
-        let record = self.wal.read().await.load();
+        let record = self.wal.write().await.load().await;
         if record.is_empty() {
             warn!("failed to load wal!");
             Err(ConsensusError::Other("failed to load wal".to_string()).into())
