@@ -162,11 +162,12 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn run(opts: RunOpts) {
+    #[cfg(not(windows))]
     tokio::spawn(cloud_util::signal::handle_signals());
 
     // init log4rs
     log4rs::init_file(&opts.log_file, Default::default())
-        .map_err(|e| println!("log init err: {}", e))
+        .map_err(|e| println!("log init err: {e}"))
         .unwrap();
 
     // load service config
@@ -205,7 +206,7 @@ async fn run(opts: RunOpts) {
         warn!("network not ready! Retrying");
     }
 
-    let consensus = Consensus::new(config.clone());
+    let consensus = Consensus::new(config.clone()).await;
 
     let consensus_server = ConsensusServer::new(consensus.clone());
 
