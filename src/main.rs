@@ -162,6 +162,7 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn run(opts: RunOpts) {
+    #[cfg(not(windows))]
     tokio::spawn(cloud_util::signal::handle_signals());
 
     // init log4rs
