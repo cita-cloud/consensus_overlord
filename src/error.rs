@@ -21,17 +21,17 @@ use std::error::Error;
 pub enum ConsensusError {
     WALErr(std::io::Error),
 
-    #[display(fmt = "{:?}", _0)]
+    #[display(fmt = "{_0:?}")]
     Other(String),
 
     /// This boxed error should be a `CryptoError`.
-    #[display(fmt = "Crypto error {:?}", _0)]
+    #[display(fmt = "Crypto error {_0:?}")]
     CryptoErr(Box<CryptoError>),
 
-    #[display(fmt = "decode error {:?}", _0)]
+    #[display(fmt = "decode error {_0:?}")]
     DecodeError(ProtoDecodeError),
 
-    #[display(fmt = "encode error {:?}", _0)]
+    #[display(fmt = "encode error {_0:?}")]
     EncodeError(ProtoEncodeError),
 }
 

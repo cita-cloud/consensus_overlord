@@ -167,7 +167,7 @@ async fn run(opts: RunOpts) {
 
     // init log4rs
     log4rs::init_file(&opts.log_file, Default::default())
-        .map_err(|e| println!("log init err: {}", e))
+        .map_err(|e| println!("log init err: {e}"))
         .unwrap();
 
     // load service config
