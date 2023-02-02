@@ -59,9 +59,9 @@ pub struct Consensus {
 }
 
 impl Consensus {
-    pub async fn new(config: ConsensusConfig) -> Self {
+    pub async fn new(config: ConsensusConfig, private_key_path: &str) -> Self {
         let wal = ConsensusWal::new(&config.wal_path).await;
-        let crypto = ConsensusCrypto::new(&config.private_key_path);
+        let crypto = ConsensusCrypto::new(private_key_path);
         let brain = Brain::new(crypto.clone());
 
         let overlord = Overlord::new(

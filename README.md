@@ -12,20 +12,17 @@ docker build -t citacloud/consensus_overlord .
 
 ```
 $ consensus -h       
-consensus 6.6.0
-Rivtower Technologies <contact@rivtower.com>
 This doc string acts as a help message when the user runs '--help' as do all doc strings on fields
 
-USAGE:
-    consensus <SUBCOMMAND>
+Usage: consensus <COMMAND>
 
-OPTIONS:
-    -h, --help       Print help information
-    -V, --version    Print version information
+Commands:
+  run   run this service
+  help  Print this message or the help of the given subcommand(s)
 
-SUBCOMMANDS:
-    help    Print this message or the help of the given subcommand(s)
-    run     run this service
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 ### consensus-run
@@ -34,17 +31,15 @@ SUBCOMMANDS:
 
 ```
 $ consensus run -h
-consensus-run 
 run this service
 
-USAGE:
-    consensus run [OPTIONS]
+Usage: consensus run [OPTIONS]
 
-OPTIONS:
-    -c, --config <CONFIG_PATH>    Chain config path [default: config.toml]
-    -h, --help                    Print help information
-    -l, --log <LOG_FILE>          log config path [default: consensus-log4rs.yaml]
-
+Options:
+  -c, --config <CONFIG_PATH>                 Chain config path [default: config.toml]
+  -l, --log <LOG_FILE>                       log config path [default: consensus-log4rs.yaml]
+  -p, --private_key_path <PRIVATE_KEY_PATH>  private key path [default: private_key]
+  -h, --help                                 Print help
 ```
 
 参数：

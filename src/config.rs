@@ -23,7 +23,6 @@ pub struct ConsensusConfig {
     pub controller_port: u16,
     pub server_retry_interval: u64,
     pub wal_path: String,
-    pub private_key_path: String,
     pub enable_metrics: bool,
     pub metrics_port: u16,
     pub metrics_buckets: Vec<f64>,
@@ -37,7 +36,6 @@ impl Default for ConsensusConfig {
             controller_port: 50004,
             server_retry_interval: 1,
             wal_path: "overlord_wal".to_string(),
-            private_key_path: "private_key".to_string(),
             enable_metrics: true,
             metrics_port: 60001,
             metrics_buckets: vec![
