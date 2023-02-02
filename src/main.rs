@@ -171,8 +171,7 @@ async fn run(opts: RunOpts) {
         .unwrap();
 
     // load service config
-    let mut config = ConsensusConfig::new(&opts.config_path);
-    config.private_key_path = opts.private_key_path;
+    let config = ConsensusConfig::new(&opts.config_path);
 
     let grpc_port = config.consensus_port.to_string();
 
@@ -206,7 +205,7 @@ async fn run(opts: RunOpts) {
         warn!("network not ready! Retrying");
     }
 
-    let consensus = Consensus::new(config.clone()).await;
+    let consensus = Consensus::new(config.clone(), &opts.private_key_path).await;
 
     let consensus_server = ConsensusServer::new(consensus.clone());
 
