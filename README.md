@@ -53,7 +53,6 @@ Options:
     * `controller_port` 控制器微服务的gRPC端口
     * `metrics_port` 是metrics信息的导出端口
     * `enable_metrics` 是metrics功能的开关
-    * `node_address` 节点地址文件路径
 
     其中`[consensus_overlord.log_config]`段为微服务日志的配置：
     * `max_level` 日志等级
