@@ -37,7 +37,6 @@ Usage: consensus run [OPTIONS]
 
 Options:
   -c, --config <CONFIG_PATH>                 Chain config path [default: config.toml]
-  -l, --log <LOG_FILE>                       log config path [default: consensus-log4rs.yaml]
   -p, --private_key_path <PRIVATE_KEY_PATH>  private key path [default: private_key]
   -h, --help                                 Print help
 ```
@@ -47,19 +46,23 @@ Options:
 
    参见示例`example/config.toml`。
 
-   其中：
+   其中`[consensus_overlord]`段为微服务的配置：
     * `consensus_port` 为该服务监听的端口号。
-2. 日志配置文件。
+    * `domain` 节点的域名
+    * `network_port` 网络微服务的gRPC端口
+    * `controller_port` 控制器微服务的gRPC端口
+    * `metrics_port` 是metrics信息的导出端口
+    * `enable_metrics` 是metrics功能的开关
+    * `node_address` 节点地址文件路径
 
-   参见示例`consensus-log4rs.yaml`。
-
-   其中：
-
-    * `level` 为日志等级。可选项有：`Error`，`Warn`，`Info`，`Debug`，`Trace`，默认为`Info`。
-    * `appenders` 为输出选项，类型为一个数组。可选项有：标准输出(`stdout`)和滚动的日志文件（`journey-service`），默认为同时输出到两个地方。
+    其中`[consensus_overlord.log_config]`段为微服务日志的配置：
+    * `max_level` 日志等级
+    * `filter` 日志过滤配置
+    * `service_name` 服务名称，用作日志文件名与日志采集的服务名称
+    * `rolling_file_path` 日志文件路径
+    * `agent_endpoint` jaeger 采集端地址
 
 ```
-$ consensus run -c example/config.toml -l consensus-log4rs.yaml
-2022-04-28T02:33:22.839993245+00:00 INFO consensus - start consensus overlord
-2022-04-28T02:33:22.840116114+00:00 INFO consensus - grpc port of this service: 50001
+$ consensus run -c example/config.toml -p example/private_key
+2023-02-08T06:20:57.500676Z  INFO consensus: grpc port of consensus_overlord: 50001
 ```

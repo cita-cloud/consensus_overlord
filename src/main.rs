@@ -21,7 +21,8 @@ mod util;
 
 use crate::panic_hook::set_panic_handler;
 use clap::Parser;
-use log::{debug, info, warn};
+#[macro_use]
+extern crate tracing as logger;
 
 /// This doc string acts as a help message when the user runs '--help'
 /// as do all doc strings on fields
@@ -45,9 +46,6 @@ struct RunOpts {
     /// Chain config path
     #[clap(short = 'c', long = "config", default_value = "config.toml")]
     config_path: String,
-    /// log config path
-    #[clap(short = 'l', long = "log", default_value = "consensus-log4rs.yaml")]
-    log_file: String,
     /// private key path
     #[clap(short = 'p', long = "private_key_path", default_value = "private_key")]
     private_key_path: String,
@@ -95,10 +93,12 @@ impl ConsensusServer {
 
 #[tonic::async_trait]
 impl ConsensusService for ConsensusServer {
+    #[instrument(skip_all)]
     async fn reconfigure(
         &self,
         request: Request<ConsensusConfiguration>,
     ) -> Result<Response<StatusCode>, Status> {
+        cloud_util::tracer::set_parent(&request);
         let configuration = request.into_inner();
         debug!("reconfigure {:?}", configuration);
         self.consensus.proc_reconfigure(configuration).await;
@@ -108,11 +108,14 @@ impl ConsensusService for ConsensusServer {
         Ok(Response::new(reply))
     }
 
+    #[instrument(skip_all)]
     async fn check_block(
         &self,
         request: Request<ProposalWithProof>,
     ) -> Result<Response<StatusCode>, Status> {
+        cloud_util::tracer::set_parent(&request);
         let code = if self.consensus.reconfigure.read().await.is_none() {
+            warn!("server not ready!");
             StatusCodeEnum::ConsensusServerNotReady as u32
         } else {
             let block_with_proof = request.into_inner();
@@ -131,12 +134,15 @@ impl ConsensusService for ConsensusServer {
 
 #[tonic::async_trait]
 impl NetworkMsgHandlerService for ConsensusServer {
+    #[instrument(skip_all)]
     async fn process_network_msg(
         &self,
         request: Request<NetworkMsg>,
     ) -> Result<Response<StatusCode>, Status> {
+        cloud_util::tracer::set_parent(&request);
         let msg = request.into_inner();
         if msg.module != "consensus" {
+            warn!("invalid module {}!", msg.module);
             Err(Status::invalid_argument("wrong module"))
         } else {
             info!(
@@ -165,13 +171,13 @@ async fn run(opts: RunOpts) {
     #[cfg(not(windows))]
     tokio::spawn(cloud_util::signal::handle_signals());
 
-    // init log4rs
-    log4rs::init_file(&opts.log_file, Default::default())
-        .map_err(|e| println!("log init err: {e}"))
-        .unwrap();
-
     // load service config
     let config = ConsensusConfig::new(&opts.config_path);
+
+    // init tracer
+    cloud_util::tracer::init_tracer(config.domain.clone(), &config.log_config)
+        .map_err(|e| println!("tracer init err: {e}"))
+        .unwrap();
 
     let grpc_port = config.consensus_port.to_string();
 
