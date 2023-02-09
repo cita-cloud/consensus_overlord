@@ -26,7 +26,6 @@ use cita_cloud_proto::network::NetworkMsg;
 use cita_cloud_proto::status_code::StatusCodeEnum;
 use cloud_util::wal::{LogType, Wal as CITAWal};
 use creep::Context;
-use log::{info, warn};
 use overlord::types::{
     AggregatedVote, Commit, Hash, Node, OverlordMsg, Proof, SignedChoke, SignedProposal,
     SignedVote, Status, ViewChangeReason, Vote, VoteType,
@@ -96,6 +95,7 @@ impl Consensus {
             .unwrap();
     }
 
+    #[instrument(skip_all)]
     async fn update_status(&self, configuration: ConsensusConfiguration) {
         let init_block_number = configuration.height + 1;
         let interval = configuration.block_interval;
@@ -126,6 +126,7 @@ impl Consensus {
         self.crypto.update_pubkeys(new_pubkeys).await;
     }
 
+    #[instrument(skip_all)]
     pub async fn proc_reconfigure(&self, configuration: ConsensusConfiguration) {
         let configuration_height = configuration.height;
         let old_height = {
@@ -135,15 +136,16 @@ impl Consensus {
                 0
             }
         };
-
+        info!("old configure: {old_height}");
         if old_height == 0 || configuration_height > old_height {
-            info!("update_status!");
             self.update_status(configuration.clone()).await;
-            info!("set reconfigure!");
+            info!("update_status done!");
             *self.reconfigure.write().await = Some(configuration);
+            info!("set reconfigure done!");
         }
     }
 
+    #[instrument(skip_all)]
     pub async fn check_block(&self, proposal_with_proof: ProposalWithProof) -> bool {
         if let Some(proposal) = proposal_with_proof.proposal {
             let proposal_height = proposal.height;
@@ -185,6 +187,7 @@ impl Consensus {
                             )
                             .is_ok()
                         {
+                            info!("grpc check_block: OK");
                             true
                         } else {
                             warn!("grpc check_block: verify_aggregated_signature failed!");
@@ -208,6 +211,7 @@ impl Consensus {
         }
     }
 
+    #[instrument(skip_all)]
     pub async fn proc_network_msg(&self, msg: NetworkMsg) {
         info!("proc_network_msg {}!", msg.r#type.as_str());
 

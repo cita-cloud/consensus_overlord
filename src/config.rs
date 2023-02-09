@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use cloud_util::common::read_toml;
+use cloud_util::{common::read_toml, tracer::LogConfig};
 use serde_derive::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -26,6 +26,8 @@ pub struct ConsensusConfig {
     pub enable_metrics: bool,
     pub metrics_port: u16,
     pub metrics_buckets: Vec<f64>,
+    pub domain: String,
+    pub log_config: LogConfig,
 }
 
 impl Default for ConsensusConfig {
@@ -41,6 +43,8 @@ impl Default for ConsensusConfig {
             metrics_buckets: vec![
                 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0, 25.0, 50.0, 75.0, 100.0, 250.0, 500.0,
             ],
+            domain: Default::default(),
+            log_config: Default::default(),
         }
     }
 }
