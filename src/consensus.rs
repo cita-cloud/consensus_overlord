@@ -96,41 +96,11 @@ impl Consensus {
     }
 
     #[instrument(skip_all)]
-    async fn update_status(&self, configuration: ConsensusConfiguration) {
-        let init_block_number = configuration.height + 1;
-        let interval = configuration.block_interval;
-        let nodes = validators_to_nodes(&configuration.validators);
-
-        info!("update nodes!");
-        self.brain.set_nodes(nodes.clone()).await;
-
-        info!("send overlord_handler msg!");
-        let ret = self.overlord_handler.send_msg(
-            Context::new(),
-            OverlordMsg::RichStatus(Status {
-                height: init_block_number,
-                interval: Some((interval * 1000) as u64),
-                timer_config: timer_config(),
-                authority_list: nodes,
-            }),
-        );
-        if ret.is_err() {
-            warn!("send overlord_handler msg error! {:?}", ret);
-        }
-
-        let mut new_pubkeys = Vec::new();
-        for v in &configuration.validators {
-            let pub_key = BlsPublicKey::try_from(v.as_ref()).unwrap();
-            new_pubkeys.push(pub_key);
-        }
-        self.crypto.update_pubkeys(new_pubkeys).await;
-    }
-
-    #[instrument(skip_all)]
     pub async fn proc_reconfigure(&self, configuration: ConsensusConfiguration) {
         let configuration_height = configuration.height;
+        let mut config_opt = self.reconfigure.write().await;
         let old_height = {
-            if let Some(ref config) = *self.reconfigure.read().await {
+            if let Some(ref config) = *config_opt {
                 config.height
             } else {
                 0
@@ -138,10 +108,37 @@ impl Consensus {
         };
         info!("old configure: {old_height}");
         if old_height == 0 || configuration_height > old_height {
-            self.update_status(configuration.clone()).await;
-            info!("update_status done!");
-            *self.reconfigure.write().await = Some(configuration);
-            info!("set reconfigure done!");
+            let init_block_number = configuration_height + 1;
+            let interval = configuration.block_interval;
+            let nodes = validators_to_nodes(&configuration.validators);
+
+            info!("send overlord_handler msg!");
+            let ret = self.overlord_handler.send_msg(
+                Context::new(),
+                OverlordMsg::RichStatus(Status {
+                    height: init_block_number,
+                    interval: Some((interval * 1000) as u64),
+                    timer_config: timer_config(),
+                    authority_list: nodes.clone(),
+                }),
+            );
+            if ret.is_err() {
+                warn!("send overlord_handler msg error! {:?}", ret);
+                return;
+            }
+
+            info!("update nodes!");
+            self.brain.set_nodes(nodes).await;
+
+            let mut new_pubkeys = Vec::new();
+            for v in &configuration.validators {
+                let pub_key = BlsPublicKey::try_from(v.as_ref()).unwrap();
+                new_pubkeys.push(pub_key);
+            }
+            self.crypto.update_pubkeys(new_pubkeys).await;
+
+            info!("update reconfigure!");
+            *config_opt = Some(configuration);
         }
     }
 
