@@ -24,10 +24,8 @@ use clap::Parser;
 #[macro_use]
 extern crate tracing as logger;
 
-/// This doc string acts as a help message when the user runs '--help'
-/// as do all doc strings on fields
 #[derive(Parser)]
-#[clap(version, author)]
+#[clap(version, about = clap_about())]
 struct Opts {
     #[clap(subcommand)]
     subcmd: SubCommand,
@@ -78,6 +76,7 @@ use cita_cloud_proto::network::network_msg_handler_service_server::NetworkMsgHan
 use cita_cloud_proto::network::{NetworkMsg, RegisterInfo};
 use cita_cloud_proto::status_code::StatusCodeEnum;
 use tonic::{transport::Server, Request, Response, Status};
+use util::clap_about;
 
 // grpc server of RPC
 #[derive(Clone)]

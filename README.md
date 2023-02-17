@@ -11,8 +11,9 @@ docker build -t citacloud/consensus_overlord .
 ## 使用方法
 
 ```
-$ consensus -h       
-This doc string acts as a help message when the user runs '--help' as do all doc strings on fields
+$ consensus -h
+consensus 6.6.3
+Rivtower Technologies <contact@rivtower.com>
 
 Usage: consensus <COMMAND>
 
