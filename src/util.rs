@@ -95,3 +95,10 @@ pub fn validator_to_origin(validator_address: &[u8]) -> u64 {
     decoded[..8].clone_from_slice(&validator_address[..8]);
     u64::from_be_bytes(decoded)
 }
+
+pub fn clap_about() -> String {
+    let name = env!("CARGO_PKG_NAME").to_string();
+    let version = env!("CARGO_PKG_VERSION");
+    let authors = env!("CARGO_PKG_AUTHORS");
+    name + " " + version + "\n" + authors
+}
