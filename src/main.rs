@@ -59,6 +59,14 @@ fn main() {
     // (as below), requesting just the name used, or both at the same time
     match opts.subcmd {
         SubCommand::Run(opts) => {
+            // load service config
+            let config = ConsensusConfig::new(&opts.config_path);
+
+            // init tracer
+            cloud_util::tracer::init_tracer(config.domain, &config.log_config)
+                .map_err(|e| println!("tracer init err: {e}"))
+                .unwrap();
+
             run(opts);
             warn!("Should not reach here");
         }
@@ -172,11 +180,6 @@ async fn run(opts: RunOpts) {
 
     // load service config
     let config = ConsensusConfig::new(&opts.config_path);
-
-    // init tracer
-    cloud_util::tracer::init_tracer(config.domain.clone(), &config.log_config)
-        .map_err(|e| println!("tracer init err: {e}"))
-        .unwrap();
 
     let grpc_port = config.consensus_port.to_string();
 
