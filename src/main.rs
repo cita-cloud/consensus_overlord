@@ -16,11 +16,10 @@ mod config;
 mod consensus;
 mod error;
 mod health_check;
-mod panic_hook;
 mod util;
 
-use crate::panic_hook::set_panic_handler;
 use clap::Parser;
+use cloud_util::panic_hook::set_panic_handler;
 #[macro_use]
 extern crate tracing as logger;
 
