@@ -263,15 +263,20 @@ async fn run(opts: RunOpts) {
     };
 
     info!("start consensus_overlord grpc server");
-    let _ = if layer.is_some() {
+    if let Some(layer) = layer {
         info!("metrics on");
         Server::builder()
-            .layer(layer.unwrap())
+            .layer(layer)
             .add_service(ConsensusServiceServer::new(consensus_server.clone()))
             .add_service(NetworkMsgHandlerServiceServer::new(consensus_server))
             .add_service(HealthServer::new(HealthCheckServer {}))
             .serve(addr)
             .await
+            .map_err(|e| {
+                warn!("start consensus_overlord grpc server failed: {:?} ", e);
+                StatusCodeEnum::FatalError
+            })
+            .unwrap();
     } else {
         info!("metrics off");
         Server::builder()
@@ -280,5 +285,10 @@ async fn run(opts: RunOpts) {
             .add_service(HealthServer::new(HealthCheckServer {}))
             .serve(addr)
             .await
+            .map_err(|e| {
+                warn!("start consensus_overlord grpc server failed: {:?} ", e);
+                StatusCodeEnum::FatalError
+            })
+            .unwrap();
     };
 }
