@@ -19,7 +19,6 @@ mod health_check;
 mod util;
 
 use clap::Parser;
-use cloud_util::panic_hook::set_panic_handler;
 #[macro_use]
 extern crate tracing as logger;
 
@@ -50,7 +49,6 @@ struct RunOpts {
 
 fn main() {
     ::std::env::set_var("RUST_BACKTRACE", "full");
-    set_panic_handler();
 
     let opts: Opts = Opts::parse();
 
@@ -59,7 +57,6 @@ fn main() {
     match opts.subcmd {
         SubCommand::Run(opts) => {
             run(opts);
-            warn!("Should not reach here");
         }
     }
 }
@@ -166,8 +163,7 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn run(opts: RunOpts) {
-    #[cfg(not(windows))]
-    tokio::spawn(cloud_util::signal::handle_signals());
+    let rx_signal = cloud_util::graceful_shutdown::graceful_shutdown();
 
     // load service config
     let config = ConsensusConfig::new(&opts.config_path);
@@ -270,7 +266,10 @@ async fn run(opts: RunOpts) {
             .add_service(ConsensusServiceServer::new(consensus_server.clone()))
             .add_service(NetworkMsgHandlerServiceServer::new(consensus_server))
             .add_service(HealthServer::new(HealthCheckServer {}))
-            .serve(addr)
+            .serve_with_shutdown(
+                addr,
+                cloud_util::graceful_shutdown::grpc_serve_listen_term(rx_signal),
+            )
             .await
             .map_err(|e| {
                 warn!("start consensus_overlord grpc server failed: {:?} ", e);
@@ -283,7 +282,10 @@ async fn run(opts: RunOpts) {
             .add_service(ConsensusServiceServer::new(consensus_server.clone()))
             .add_service(NetworkMsgHandlerServiceServer::new(consensus_server))
             .add_service(HealthServer::new(HealthCheckServer {}))
-            .serve(addr)
+            .serve_with_shutdown(
+                addr,
+                cloud_util::graceful_shutdown::grpc_serve_listen_term(rx_signal),
+            )
             .await
             .map_err(|e| {
                 warn!("start consensus_overlord grpc server failed: {:?} ", e);
