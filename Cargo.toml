@@ -1,6 +1,6 @@
 [package]
 name = "consensus"
-version = "6.7.1"
+version = "6.7.2-beta.1"
 authors = ["Rivtower Technologies <contact@rivtower.com>"]
 license = "Apache-2.0"
 edition = "2021"
@@ -27,8 +27,8 @@ rlp = "0.5"
 tower = "0.4"
 tracing = "0.1"
 
-cloud-util = { package = "cloud-util", git = "https://github.com/cita-cloud/cloud-common-rs" }
-cita_cloud_proto = { package = "cita_cloud_proto", git = "https://github.com/cita-cloud/cloud-common-rs" }
+cloud-util = "0.8.0-beta.1"
+cita_cloud_proto = "=6.7.2-beta.1"
 
 [profile.release.package."*"]
 # Set the default for dependencies.
