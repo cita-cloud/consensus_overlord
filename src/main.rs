@@ -193,11 +193,11 @@ async fn run(opts: RunOpts) {
                 port: grpc_port.clone(),
             };
 
-            if let Ok(scode) = network_client()
+            if let Ok(status_code) = network_client()
                 .register_network_msg_handler(register_info)
                 .await
             {
-                if scode.code == (StatusCodeEnum::Success as u32) {
+                if status_code.code == (StatusCodeEnum::Success as u32) {
                     break;
                 }
             }
@@ -221,7 +221,7 @@ async fn run(opts: RunOpts) {
                     consensus.ping_controller().await;
                 }
             }
-            info!("wating for reconfiguration!");
+            info!("waiting for reconfiguration!");
         }
 
         let (init_block_number, interval, validators) = {
