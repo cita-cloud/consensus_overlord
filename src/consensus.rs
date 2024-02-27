@@ -212,6 +212,7 @@ impl Consensus {
     pub async fn proc_network_msg(&self, msg: NetworkMsg) {
         if msg.r#type.as_str() == "SignedVote" {
             if let Ok(vote) = SignedVote::decode(&Rlp::new(&msg.msg)) {
+                info!("proc SignedVote {}", vote);
                 let ret = self
                     .overlord_handler
                     .send_msg(Context::new(), OverlordMsg::SignedVote(vote));
@@ -223,6 +224,7 @@ impl Consensus {
             }
         } else if msg.r#type.as_str() == "AggregatedVote" {
             if let Ok(agg_vote) = AggregatedVote::decode(&Rlp::new(&msg.msg)) {
+                info!("proc AggregatedVote {}", agg_vote);
                 let ret = self
                     .overlord_handler
                     .send_msg(Context::new(), OverlordMsg::AggregatedVote(agg_vote));
@@ -234,6 +236,7 @@ impl Consensus {
             }
         } else if msg.r#type.as_str() == "SignedProposal" {
             if let Ok(proposal) = SignedProposal::decode(&Rlp::new(&msg.msg)) {
+                info!("proc SignedProposal {}", proposal);
                 let ret = self
                     .overlord_handler
                     .send_msg(Context::new(), OverlordMsg::SignedProposal(proposal));
@@ -245,6 +248,7 @@ impl Consensus {
             }
         } else if msg.r#type.as_str() == "SignedChoke" {
             if let Ok(choke) = SignedChoke::decode(&Rlp::new(&msg.msg)) {
+                info!("proc SignedChoke {:?}", choke);
                 let ret = self
                     .overlord_handler
                     .send_msg(Context::new(), OverlordMsg::SignedChoke(choke));
@@ -674,35 +678,35 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         _ctx: Context,
         words: OverlordMsg<ConsensusProposal>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let (network_msg, type_str) = match words {
-            OverlordMsg::SignedProposal(proposal) => (
+        let network_msg = match words {
+            OverlordMsg::SignedProposal(proposal) => {
+                info!("broadcast SignedProposal {} to other!", proposal);
                 NetworkMsg {
                     module: "consensus".to_owned(),
                     r#type: "SignedProposal".to_string(),
                     origin: 0,
                     msg: proposal.rlp_bytes().to_vec(),
-                },
-                "SignedProposal",
-            ),
+                }
+            }
 
-            OverlordMsg::SignedChoke(choke) => (
+            OverlordMsg::SignedChoke(choke) => {
+                info!("broadcast SignedChoke {:?} to other!", choke);
                 NetworkMsg {
                     module: "consensus".to_owned(),
                     r#type: "SignedChoke".to_string(),
                     origin: 0,
                     msg: choke.rlp_bytes().to_vec(),
-                },
-                "SignedChoke",
-            ),
-            OverlordMsg::AggregatedVote(agg_vote) => (
+                }
+            }
+            OverlordMsg::AggregatedVote(agg_vote) => {
+                info!("broadcast AggregatedVote {} to other!", agg_vote);
                 NetworkMsg {
                     module: "consensus".to_owned(),
                     r#type: "AggregatedVote".to_string(),
                     origin: 0,
                     msg: agg_vote.rlp_bytes().to_vec(),
-                },
-                "AggregatedVote",
-            ),
+                }
+            }
             _ => {
                 warn!("broadcast_to_other unexpected network msg!");
                 return Err(Box::new(ConsensusError::Other(
@@ -710,8 +714,6 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
                 )));
             }
         };
-
-        info!("broadcast {} to other!", type_str);
 
         let resp = network_client().broadcast(network_msg).await;
         if let Err(e) = resp {
@@ -730,25 +732,33 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
         name: Bytes,
         words: OverlordMsg<ConsensusProposal>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let (network_msg, type_str) = match words {
-            OverlordMsg::SignedVote(vote) => (
+        let network_msg = match words {
+            OverlordMsg::SignedVote(vote) => {
+                info!(
+                    "transmit SignedVote {} to relayer {}!",
+                    vote,
+                    hex::encode(&name)
+                );
                 NetworkMsg {
                     module: "consensus".to_owned(),
                     r#type: "SignedVote".to_owned(),
                     origin: validator_to_origin(&name),
                     msg: vote.rlp_bytes().to_vec(),
-                },
-                "SignedVote",
-            ),
-            OverlordMsg::AggregatedVote(agg_vote) => (
+                }
+            }
+            OverlordMsg::AggregatedVote(agg_vote) => {
+                info!(
+                    "transmit AggregatedVote {} to relayer {}!",
+                    agg_vote,
+                    hex::encode(&name)
+                );
                 NetworkMsg {
                     module: "consensus".to_owned(),
                     r#type: "AggregatedVote".to_owned(),
                     origin: validator_to_origin(&name),
                     msg: agg_vote.rlp_bytes().to_vec(),
-                },
-                "AggregatedVote",
-            ),
+                }
+            }
             _ => {
                 warn!("transmit_to_relayer unexpected network msg!");
                 return Err(Box::new(ConsensusError::Other(
@@ -756,8 +766,6 @@ impl OverlordConsensus<ConsensusProposal> for Brain {
                 )));
             }
         };
-
-        info!("transmit {} to relayer!", type_str);
 
         let resp = network_client().send_msg(network_msg).await;
         if let Err(e) = resp {
