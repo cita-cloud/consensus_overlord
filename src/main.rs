@@ -141,8 +141,9 @@ impl NetworkMsgHandlerService for ConsensusServer {
             Err(Status::invalid_argument("wrong module"))
         } else {
             info!(
-                "get network message module {:?} type {:?}",
-                msg.module, msg.r#type
+                "get network message type {:?} from {}",
+                msg.r#type,
+                hex::encode(msg.origin.to_be_bytes())
             );
             self.consensus.proc_network_msg(msg).await;
             let reply = StatusCode {
