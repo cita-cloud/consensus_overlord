@@ -178,7 +178,7 @@ async fn run(opts: RunOpts) {
 
     info!("grpc port of consensus_overlord: {}", &grpc_port);
 
-    let addr_str = format!("127.0.0.1:{}", &grpc_port);
+    let addr_str = format!("[::]:{}", &grpc_port);
     let addr = addr_str.parse().unwrap();
 
     init_grpc_client(&config);
@@ -190,7 +190,7 @@ async fn run(opts: RunOpts) {
         {
             let register_info = RegisterInfo {
                 module_name: "consensus".to_owned(),
-                hostname: "127.0.0.1".to_owned(),
+                hostname: "localhost".to_owned(),
                 port: grpc_port.clone(),
             };
 
