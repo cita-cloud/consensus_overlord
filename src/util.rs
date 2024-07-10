@@ -36,7 +36,7 @@ pub fn init_grpc_client(config: &ConsensusConfig) {
         .set({
             let client_options = ClientOptions::new(
                 CLIENT_NAME.to_string(),
-                format!("http://127.0.0.1:{}", config.network_port),
+                format!("http://localhost:{}", config.network_port),
             );
             match client_options.connect_network() {
                 Ok(retry_client) => retry_client,
@@ -48,7 +48,7 @@ pub fn init_grpc_client(config: &ConsensusConfig) {
         .set({
             let client_options = ClientOptions::new(
                 CLIENT_NAME.to_string(),
-                format!("http://127.0.0.1:{}", config.controller_port),
+                format!("http://localhost:{}", config.controller_port),
             );
             match client_options.connect_controller() {
                 Ok(retry_client) => retry_client,
