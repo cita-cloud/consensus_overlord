@@ -18,8 +18,8 @@ use cita_cloud_proto::client::{ClientOptions, InterceptedSvc};
 use cita_cloud_proto::controller::consensus2_controller_service_client::Consensus2ControllerServiceClient;
 use cita_cloud_proto::network::network_service_client::NetworkServiceClient;
 use cita_cloud_proto::retry::RetryClient;
-use overlord::types::Node;
 use overlord::DurationConfig;
+use overlord::types::Node;
 use tokio::sync::OnceCell;
 
 pub static NETWORK_CLIENT: OnceCell<RetryClient<NetworkServiceClient<InterceptedSvc>>> =
