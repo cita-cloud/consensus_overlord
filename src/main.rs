@@ -48,8 +48,6 @@ struct RunOpts {
 }
 
 fn main() {
-    ::std::env::set_var("RUST_BACKTRACE", "full");
-
     let opts: Opts = Opts::parse();
 
     // You can handle information about subcommands by requesting their matches by name
@@ -71,7 +69,7 @@ use cita_cloud_proto::network::network_msg_handler_service_server::NetworkMsgHan
 use cita_cloud_proto::network::network_msg_handler_service_server::NetworkMsgHandlerServiceServer;
 use cita_cloud_proto::network::{NetworkMsg, RegisterInfo};
 use cita_cloud_proto::status_code::StatusCodeEnum;
-use tonic::{transport::Server, Request, Response, Status};
+use tonic::{Request, Response, Status, transport::Server};
 use util::clap_about;
 
 // grpc server of RPC
@@ -159,7 +157,7 @@ use crate::consensus::Consensus;
 use crate::health_check::HealthCheckServer;
 use crate::util::validators_to_nodes;
 use crate::util::{init_grpc_client, network_client};
-use cloud_util::metrics::{run_metrics_exporter, MiddlewareLayer};
+use cloud_util::metrics::{MiddlewareLayer, run_metrics_exporter};
 use std::time::Duration;
 
 #[tokio::main]
@@ -197,10 +195,9 @@ async fn run(opts: RunOpts) {
             if let Ok(status_code) = network_client()
                 .register_network_msg_handler(register_info)
                 .await
+                && status_code.code == (StatusCodeEnum::Success as u32)
             {
-                if status_code.code == (StatusCodeEnum::Success as u32) {
-                    break;
-                }
+                break;
             }
         }
         warn!("network not ready! Retrying");

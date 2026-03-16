@@ -30,8 +30,8 @@ use overlord::types::{
     SignedVote, Status, ViewChangeReason, Vote, VoteType,
 };
 use overlord::{
-    extract_voters, Codec, Consensus as OverlordConsensus, Crypto as OverlordCrypto, Overlord,
-    OverlordHandler, Wal,
+    Codec, Consensus as OverlordConsensus, Crypto as OverlordCrypto, Overlord, OverlordHandler,
+    Wal, extract_voters,
 };
 use rlp::Decodable;
 use rlp::Encodable;
